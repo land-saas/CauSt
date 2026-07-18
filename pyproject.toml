@@ -5,17 +5,32 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cau_st"
 version = "0.1.0"
-description = "this is a package of inference"
+description = "CauST: Causal Gene Intervention for Robust Spatial Domain Identification"
 readme = "README.md"
 authors = [
-    {name = "你的名字", email = "your@email.com"}
+    {name = "Jiawei Li", email = "jli53355@usc.edu"}
 ]
 license = {text = "MIT"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
-    "requests>=2.28.0",
-    "numpy>=1.21.0"
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
+    "scikit-learn>=1.0",
+    "anndata>=0.8",
 ]
 
+[project.optional-dependencies]
+stagate = ["torch>=1.10", "scanpy>=1.9"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+caust = "caust.cli:main"
+
 [project.urls]
-Homepage = "https://github.com/你的用户名/你的仓库"
+Homepage = "https://github.com/jiaweili/CauST"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

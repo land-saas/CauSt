@@ -1,0 +1,7 @@
+numpy>=1.21.0
+scipy>=1.7.0
+scikit-learn>=1.0
+anndata>=0.8
+# optional, for the STAGATE backbone and full ST workflows:
+# torch>=1.10
+# scanpy>=1.9

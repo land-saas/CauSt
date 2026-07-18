@@ -1,0 +1,2 @@
+[console_scripts]
+caust = caust.cli:main
