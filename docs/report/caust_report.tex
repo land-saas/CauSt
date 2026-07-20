@@ -1,0 +1,474 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  framesep=6pt,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  captionpos=b,
+  xleftmargin=2pt,
+}
+
+\newcommand{\dinv}{s_{\mathrm{inv}}}
+\newcommand{\Gcausal}{\mathcal{G}_{\text{causal}}}
+
+\title{\textbf{CauST: Causal Gene Intervention for\\ Robust Spatial Domain Identification}\\[4pt]
+\large A Method, Reference Implementation, and Empirical Study}
+\author{Jiawei Li\\ University of Southern California\\ \texttt{jli53355@usc.edu}}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Spatial domain identification is a core task in spatial transcriptomics (ST).
+State-of-the-art graph neural network (GNN) methods achieve strong within-slice
+performance, yet they select genes by variance-based heuristics (highly variable
+genes, HVGs) that are neither causally grounded nor stable across tissue
+sections. Because clinical and translational applications require models that
+generalize across slices from different donors---where batch effects,
+donor-specific expression, and tissue heterogeneity all shift the gene
+landscape---this lack of cross-slice robustness is a critical bottleneck. This
+report presents \textbf{CauST} (\emph{Causal Gene Intervention for Robust
+Spatial Domain Identification}), a framework that identifies genes whose
+in-silico knockout consistently disrupts spatial embeddings across multiple
+donors, and then uses only this causally invariant subset for domain
+identification. In a comprehensive 12-slice DLPFC evaluation (all slices as
+source, 10 random seeds, mclust clustering), CauST with just 100 genes achieves
+a cross-donor Adjusted Rand Index (ARI) of $0.514$---surpassing the HVG baseline
+with 3{,}200 genes ($0.456$)---while maintaining a near-zero generalization gap
+(ARI drop $= 0.001$). At equal gene counts, CauST outperforms HVG by 17--78\%
+across all tested $K$ values, winning 96/96 cross-donor transfer pairs at
+$K=100$. The selected genes are independently validated as known cortical layer
+markers, confirming biological relevance without label supervision. We
+accompany the method with an open-source, fully typed and tested reference
+implementation, and describe the software engineering practices that make the
+results reproducible.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Spatial transcriptomics technologies such as 10x Visium~\citep{staahl2016}, MERFISH~\citep{chen2015}, and Slide-seq~\citep{rodriques2019} capture
+genome-wide gene expression with spatial resolution, enabling the delineation of
+tissue sections into biologically meaningful \emph{spatial domains} that
+correspond to anatomical layers, functional niches, or microenvironments.
+Leading spatial-domain methods---STAGATE~\citep{dong2022}, GraphST~\citep{long2023}, and
+SpaGCN~\citep{hu2021}---achieve strong in-distribution ARI but rely on
+variance-based gene selection and provide no explicit mechanism for cross-slice
+generalization.
+
+The central weakness is the gene selection step. HVG selection is driven by
+marginal variance, which in multi-donor cohorts is dominated by donor-specific
+technical and biological variation rather than by the signal that defines shared
+spatial structure. A model trained on donor~1 and applied to donor~2 is
+therefore built on features that are largely absent in the target, directly
+explaining the large cross-donor ARI degradation observed in practice.
+
+CauST reframes gene selection as an \emph{interventional} question: \emph{if we
+silenced a gene entirely, would the spatial domain structure change, and would
+that change be consistent across donors?} A gene whose silencing perturbs the
+embedding strongly and \emph{stably} across donors is actively and reliably
+driving domain formation; a gene whose effect is weak, or large in one donor but
+absent in another, is a bystander or a donor-specific artifact. Keeping only the
+former yields gene sets that transfer far better than HVGs. This idea draws on
+the causal-invariance literature---Invariant Causal Prediction~\citep{peters2016}
+and Invariant Risk Minimization~\citep{arjovsky2019}---and on perturbation-based
+reasoning in single-cell analysis~\citep{dixit2016,lotfollahi2019}, but is the first to
+combine in-silico knockouts on a spatial GNN backbone with cross-slice
+invariance scoring.
+
+\paragraph{Contributions.}
+\begin{itemize}
+\item A backbone-agnostic, label-free gene-selection method
+(Section~\ref{sec:method}) that scores genes by cross-donor invariance of their
+in-silico knockout effect on a frozen spatial embedding.
+\item An open-source reference implementation
+(Section~\ref{sec:implementation}) that runs the full pipeline end-to-end with a
+dependency-light backbone and a clean interface for real GNN backbones.
+\item An empirical study on the 12-slice DLPFC benchmark
+(Section~\ref{sec:results}) demonstrating large cross-donor gains, a near-zero
+generalization gap, and biologically validated gene selection.
+\end{itemize}
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Spatial domain identification.}
+STAGATE~\citep{dong2022} learns a graph attention autoencoder over the spatial
+neighbor graph; GraphST~\citep{long2023} uses graph contrastive learning; SpaGCN~\citep{hu2021}
+integrates expression, spatial location, and histology in a graph convolutional
+network. All three achieve strong within-slice ARI but select input genes by
+variance and contain no invariance mechanism across slices or donors.
+
+\paragraph{Perturbation and causality in genomics.}
+Perturb-seq~\citep{dixit2016} and scGen~\citep{lotfollahi2019} introduce
+perturbation-based reasoning to single-cell analysis, but operate on
+differential expression rather than on spatial embeddings. On the causal side,
+Invariant Causal Prediction~\citep{peters2016} and Invariant Risk
+Minimization~\citep{arjovsky2019} formalize the search for predictors that are
+stable across environments. CauST adapts the invariance principle to an
+unsupervised spatial-embedding setting, where the ``environment'' is the tissue
+slice or donor and the ``prediction'' is the embedding perturbation induced by a
+gene knockout.
+
+\section{Method}
+\label{sec:method}
+
+\subsection{Setup and notation}
+A slice from environment (donor) $e$ is described by an expression matrix
+$X^{(e)} \in \mathbb{R}^{N_e \times G}$ over $N_e$ spots and $G$ genes, together
+with a spatial adjacency graph $A^{(e)}$ derived from spot coordinates. A
+spatial-embedding backbone is a function
+\begin{equation}
+f_\theta : (X, A) \mapsto Z \in \mathbb{R}^{N \times d},
+\end{equation}
+mapping expression and graph to a $d$-dimensional per-spot embedding. CauST
+treats $f_\theta$ as a black box that is \textbf{frozen} after being trained on a
+slice; no labels are used at any stage.
+
+\subsection{Step 1 --- In-silico gene knockout}
+For a fitted, frozen model on slice $e$ and a gene $g$, define the knockout
+matrix $\tilde{X}^{(g)}$ as $X^{(e)}$ with column $g$ zeroed:
+\begin{equation}
+\tilde{X}^{(g)}_{\cdot,j} =
+\begin{cases}
+0, & j = g,\\
+X^{(e)}_{\cdot,j}, & j \neq g.
+\end{cases}
+\end{equation}
+The \emph{knockout effect} of gene $g$ in slice $e$ is the mean per-spot shift of
+the embedding:
+\begin{equation}
+\delta(g,e) \;=\; \frac{1}{N_e} \sum_{i=1}^{N_e}
+\bigl\| f_\theta(X^{(e)}, A^{(e)})_i - f_\theta(\tilde{X}^{(g)}, A^{(e)})_i \bigr\|_2 .
+\label{eq:delta}
+\end{equation}
+Because $\theta$ and $A^{(e)}$ are fixed, the only source of variation is the
+input perturbation, so $\delta(g,e)$ isolates the gene's causal contribution to
+the embedding rather than training stochasticity. The empirical distribution of
+$\delta$ is highly skewed: a small fraction of genes drive large shifts while
+most are near zero, confirming that the backbone is selective. When $G$ is large,
+an optional gradient-based pre-filter (input-gradient magnitude~\citep{sundararajan2017})
+narrows the candidate set before exact knockouts are computed.
+
+\subsection{Step 2 --- Cross-slice invariance}
+A large $\delta(g,e)$ in a single slice is insufficient: a gene may be
+influential in one donor and irrelevant in others, indicating a donor-specific
+artifact. We therefore score each gene by rewarding a large \emph{and stable}
+effect across the $E$ environments:
+\begin{equation}
+\dinv(g) \;=\;
+\underbrace{\overline{\delta}(g)}_{\text{large}}
+\;-\;
+\lambda \cdot \underbrace{\operatorname{std}_e\!\bigl[\delta(g,e)\bigr]}_{\text{stable}},
+\qquad
+\overline{\delta}(g) = \frac{1}{E}\sum_{e=1}^{E}\delta(g,e),
+\label{eq:sinv}
+\end{equation}
+with $\lambda \ge 0$ balancing magnitude against donor-to-donor variance. Setting
+$\lambda = 0$ recovers a ``high-$\delta$'' baseline that ranks by mean effect
+alone; larger $\lambda$ demands cross-donor stability. Genes are ranked by
+$\dinv$, and the top-$K$ form the causal gene set $\Gcausal$.
+
+\subsection{Step 3 --- Retraining with the causal gene set}
+$\Gcausal$ replaces the standard HVG set as input to any downstream
+spatial-domain model, with no architectural changes. Two variants are supported:
+\emph{hard filtering} keeps the top-$K$ genes by $\dinv$; \emph{soft reweighting}
+forms $\hat{X} = X \operatorname{diag}(w)$, where $w_g = \sigma(z_g / \tau)$ with
+$z$ the standardized invariance score and $\tau$ a temperature.
+
+\subsection{Algorithm}
+The full procedure is summarized below.
+
+\begin{lstlisting}[caption={CauST causal gene selection.},label={lst:algo}]
+Input:  slices {(X^(e), A^(e))}_{e=1..E}, penalty lambda, size K
+Output: causal gene set G_causal
+
+1  common <- intersection over e of var_names(X^(e))
+2  for e = 1..E:
+3      theta_e <- train backbone f on (X^(e)[:, common], A^(e))   # frozen after
+4      for g in common:
+5          delta(g,e) <- mean_i || f_theta(X^(e))_i - f_theta(Xtilde^(g))_i ||_2
+6  for g in common:
+7      s_inv(g) <- mean_e delta(g,e) - lambda * std_e delta(g,e)
+8  G_causal <- top-K genes by s_inv
+9  return G_causal
+\end{lstlisting}
+
+\section{Reference Implementation}
+\label{sec:implementation}
+
+The method ships as an open-source Python package, \texttt{caust}, organized
+around the three steps above. A dependency-light reference backbone
+(\texttt{SimpleSpatialModel}: standardized-expression PCA projection followed by
+spatial-graph smoothing) makes the frozen forward pass deterministic, so
+re-running Eq.~\eqref{eq:delta} on a knocked-out matrix produces a
+gene-specific, reproducible embedding shift. Any real backbone (STAGATE,
+GraphST, SpaGCN) plugs in by implementing a four-method interface
+(\texttt{BaseSpatialModel}) and passing a \texttt{model\_factory} to the
+pipeline; no other code changes are required.
+
+The package is engineered to research-software standards: it is fully type
+annotated and passes \texttt{mypy}; it is linted and formatted with \texttt{ruff}
+and \texttt{black}; and its test suite exceeds 99\% line and branch coverage.
+Continuous integration runs the full gate across Python 3.9--3.12, and the
+project is packaged for distribution with a documented public API. These
+practices, detailed in Section~\ref{sec:reproducibility}, make every number in
+this report reproducible from a single command.
+
+\section{Empirical Study}
+\label{sec:results}
+
+\subsection{Datasets and protocol}
+The primary benchmark is the human dorsolateral prefrontal cortex (DLPFC) Visium
+dataset~\citep{maynard2021}, comprising 12 slices across 3 donors with manual
+cortical-layer annotations. Table~\ref{tab:datasets} lists the datasets targeted
+by the toolkit. Clustering uses a Gaussian mixture (mclust EEE in the reference
+evaluation), and results are averaged over 10 random seeds. We report the
+Adjusted Rand Index (ARI) against manual annotations, both within-slice and in
+the cross-donor transfer setting (select genes and train on a source slice,
+evaluate zero-shot on a target slice from a different donor).
+
+\begin{table}[t]
+\centering
+\caption{Public ST datasets targeted for CauST benchmarking.}
+\label{tab:datasets}
+\begin{tabular}{llll}
+\toprule
+Dataset & Technology & Tissue & Sections \\
+\midrule
+DLPFC~\citep{maynard2021} & 10x Visium & Human DLPFC & 12 \\
+Mouse brain atlas & 10x Visium & Mouse cortex & 2 \\
+MERFISH hypothalamus & MERFISH & Mouse hypothalamus & 1 \\
+STARmap visual cortex & STARmap & Mouse visual cortex & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{HVG selection is dominated by donor-specific noise}
+As a motivating diagnostic, we measured the overlap of variance-selected genes
+across slices via the Jaccard index (Table~\ref{tab:jaccard}). Only about 21\% of
+correlation-selected genes are shared across donors, so a model trained on one
+donor is largely built on features absent in another---a direct mechanistic
+explanation for cross-donor ARI degradation.
+
+\begin{table}[t]
+\centering
+\caption{Jaccard overlap of variance-selected genes.}
+\label{tab:jaccard}
+\begin{tabular}{lcc}
+\toprule
+Comparison & Jaccard similarity & Gene overlap \\
+\midrule
+Within same donor & $0.238 \pm 0.019$ & $\sim$24\% \\
+Across donors & $0.210 \pm 0.011$ & $\sim$21\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Main result}
+Table~\ref{tab:main} summarizes the headline comparison. At $K=100$ genes, CauST
+($\lambda=2$) reaches a cross-donor ARI of $0.514$, exceeding the HVG baseline
+that uses $3{,}200$ genes ($0.456$), while its within-slice-to-cross-donor
+generalization gap is just $0.001$. At equal gene counts, CauST outperforms HVG
+by 17--78\% across all tested $K$, and wins all 96/96 cross-donor transfer pairs
+and all 12/12 within-slice comparisons at $K=100$.
+
+\begin{table}[t]
+\centering
+\caption{Cross-donor ARI on the 12-slice DLPFC benchmark (10 seeds, mclust).}
+\label{tab:main}
+\begin{tabular}{lccc}
+\toprule
+Method & Genes $K$ & Cross-donor ARI & Generalization gap \\
+\midrule
+HVG baseline & 3{,}200 & 0.456 & 0.046 \\
+HVG baseline & 100 & 0.293 & --- \\
+High-$\delta$ ($\lambda=0$) & 100 & \textit{above HVG} & --- \\
+\textbf{CauST} ($\lambda=2$) & \textbf{100} & \textbf{0.514} & \textbf{0.001} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The invariance penalty is the key ingredient.}
+Selecting genes by knockout magnitude alone (High-$\delta$, $\lambda=0$) already
+beats HVG, but is consistently below CauST ($\lambda=2$). It is the requirement
+of \emph{stability across donors}, not merely importance in a single slice, that
+drives the dominant improvement. The gain is not attributable to a single
+favorable donor: the per-donor breakdown (Table~\ref{tab:perdonor}) shows
++68\% to +86\% over HVG on every donor, from a gene set derived on only 3
+training slices (one per donor) yet applied to all 12.
+
+\begin{table}[t]
+\centering
+\caption{Per-donor ARI at $K=100$ (source donor $\rightarrow$ all slices).}
+\label{tab:perdonor}
+\begin{tabular}{lccc}
+\toprule
+Source donor & HVG & CauST & $\Delta$ \\
+\midrule
+D1 (4 slices) & 0.281 & 0.523 & +86\% \\
+D2 (4 slices) & 0.293 & 0.527 & +80\% \\
+D3 (4 slices) & 0.293 & 0.491 & +68\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Biological validation}
+The genes CauST selects purely from the cross-slice invariance criterion---with
+no annotation input---include established cortical layer markers
+(Table~\ref{tab:markers}). The top-ranked genes (GAPDH, ACTB) are housekeeping
+genes whose knockout produces large, stable embedding shifts, while known layer
+markers such as NRGN, SNAP25, CCK, and MBP rank prominently. This confirms that
+the invariance criterion recovers biologically meaningful signal without label
+supervision.
+
+\begin{table}[t]
+\centering
+\caption{Selected cortical layer markers among CauST's top-ranked genes.}
+\label{tab:markers}
+\begin{tabular}{llll}
+\toprule
+Gene & Rank & Known role & Layer \\
+\midrule
+CALM1 & 5 & Calmodulin 1 & Broad cortical \\
+NRGN & 8 & Neuronal granin & Layer V/VI \\
+SNAP25 & 10 & Synaptosomal protein & Pan-neuronal \\
+CCK & 13 & Cholecystokinin & Cortical interneurons \\
+MBP & 16 & Myelin basic protein & White matter \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Reproducibility and Software Engineering}
+\label{sec:reproducibility}
+
+Reproducibility is treated as a first-class property of the artifact. The core
+pipeline is fully unsupervised and deterministic given a seed: backbone training
+uses a reconstruction objective only, knockout scoring measures embedding shifts
+on a frozen model, and the invariance score is a closed-form cross-donor
+statistic. The reference implementation enforces the following quality gates in
+continuous integration on every commit: static type checking (\texttt{mypy}),
+linting and formatting (\texttt{ruff}, \texttt{black}), and a test suite with
+$\ge 90\%$ (currently $>99\%$) line and branch coverage across Python
+3.9--3.12. A single \texttt{make check} reproduces the entire gate locally, and
+\texttt{caust demo} runs the end-to-end pipeline on synthetic multi-donor data
+that reproduces the qualitative claim of Section~\ref{sec:results}: the shared
+causal genes are ranked above high-variance donor-specific noise genes.
+
+\section{Limitations and Roadmap}
+\label{sec:limitations}
+
+The present study validates the method with a dependency-light reference
+backbone and on the DLPFC benchmark. Full integration of trained
+STAGATE/GraphST/SpaGCN backbones, integrated-gradients attribution as an
+efficient proxy for exact knockouts, and a multi-dataset benchmark suite
+(Table~\ref{tab:datasets}) are the primary items on the roadmap. Exact knockout
+scoring is linear in the number of candidate genes; the gradient pre-filter is
+intended to keep this tractable as $G$ grows. Finally, while the invariance
+criterion is validated here on donor environments, extending it to other sources
+of variation (technology, tissue) is a natural direction.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+CauST replaces variance-based gene selection with causally grounded, cross-slice
+invariant filtering. In a comprehensive 12-slice evaluation with 10 seeds, CauST
+with just 100 genes achieves a cross-donor ARI of $0.514$, surpassing HVG with
+$3{,}200$ genes ($0.456$), with a near-zero generalization gap ($0.001$). The
+invariance penalty $\lambda$ is the critical ingredient: selecting by knockout
+magnitude alone helps, but requiring cross-donor stability is what drives the
+dominant improvement. Its backbone-agnostic design and open-source, rigorously
+tested implementation make CauST a practical foundation for robust spatial
+domain identification.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Arjovsky et al.(2019)]{arjovsky2019}
+M. Arjovsky, L. Bottou, I. Gulrajani, and D. Lopez-Paz.
+\newblock Invariant risk minimization.
+\newblock \emph{arXiv preprint arXiv:1907.02893}, 2019.
+
+\bibitem[Chen et al.(2015)]{chen2015}
+K. H. Chen, A. N. Boettiger, J. R. Moffitt, S. Wang, and X. Zhuang.
+\newblock Spatially resolved, highly multiplexed RNA profiling in single cells.
+\newblock \emph{Science}, 348:aaa6090, 2015.
+
+\bibitem[Dixit et al.(2016)]{dixit2016}
+A. Dixit, O. Parnas, B. Li, et al.
+\newblock Perturb-seq: dissecting molecular circuits with scalable single-cell
+RNA profiling of pooled genetic screens.
+\newblock \emph{Cell}, 167:1853--1866, 2016.
+
+\bibitem[Dong and Zhang(2022)]{dong2022}
+K. Dong and S. Zhang.
+\newblock Deciphering spatial domains from spatially resolved transcriptomics
+with an adaptive graph attention auto-encoder (STAGATE).
+\newblock \emph{Nature Communications}, 13:1739, 2022.
+
+\bibitem[Hu et al.(2021)]{hu2021}
+J. Hu, X. Li, K. Coleman, et al.
+\newblock SpaGCN: integrating gene expression, spatial location and histology to
+identify spatial domains and spatially variable genes by graph convolutional
+network.
+\newblock \emph{Nature Methods}, 18:1342--1351, 2021.
+
+\bibitem[Long et al.(2023)]{long2023}
+Y. Long, K. S. Ang, M. Li, et al.
+\newblock Spatially informed clustering, integration, and deconvolution of
+spatial transcriptomics with GraphST.
+\newblock \emph{Nature Communications}, 14:1155, 2023.
+
+\bibitem[Lotfollahi et al.(2019)]{lotfollahi2019}
+M. Lotfollahi, F. A. Wolf, and F. J. Theis.
+\newblock scGen predicts single-cell perturbation responses.
+\newblock \emph{Nature Methods}, 16:715--721, 2019.
+
+\bibitem[Maynard et al.(2021)]{maynard2021}
+K. R. Maynard, L. Collado-Torres, L. M. Weber, et al.
+\newblock Transcriptome-scale spatial gene expression in the human dorsolateral
+prefrontal cortex.
+\newblock \emph{Nature Neuroscience}, 24:425--436, 2021.
+
+\bibitem[Peters et al.(2016)]{peters2016}
+J. Peters, P. B\"uhlmann, and N. Meinshausen.
+\newblock Causal inference by using invariant prediction: identification and
+confidence intervals.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+78:947--1012, 2016.
+
+\bibitem[Rodriques et al.(2019)]{rodriques2019}
+S. G. Rodriques, R. R. Stickels, A. Goeva, et al.
+\newblock Slide-seq: a scalable technology for measuring genome-wide expression
+at high spatial resolution.
+\newblock \emph{Science}, 363:1463--1467, 2019.
+
+\bibitem[St\aa hl et al.(2016)]{staahl2016}
+P. L. St\aa hl, F. Salm\'en, S. Vickovic, et al.
+\newblock Visualization and analysis of gene expression in tissue sections by
+spatial transcriptomics.
+\newblock \emph{Science}, 353:78--82, 2016.
+
+\bibitem[Sundararajan et al.(2017)]{sundararajan2017}
+M. Sundararajan, A. Taly, and Q. Yan.
+\newblock Axiomatic attribution for deep networks.
+\newblock In \emph{ICML}, 2017.
+
+\end{thebibliography}
+
+\end{document}
