@@ -82,9 +82,9 @@ def test_invariance_beats_high_delta_on_noise():
     cs = CauST(lam=2.0).fit(cohort)
     inv_top = set(cs.select_genes(8))
     high_delta = set(
-        np.array(cs.common_genes_)[select_causal_genes(
-            invariance_scores(cs.deltas_, lam=0.0), 8
-        )]
+        np.array(cs.common_genes_)[
+            select_causal_genes(invariance_scores(cs.deltas_, lam=0.0), 8)
+        ]
     )
     inv_causal = sum(g.startswith("CAUSAL") for g in inv_top)
     hd_causal = sum(g.startswith("CAUSAL") for g in high_delta)
