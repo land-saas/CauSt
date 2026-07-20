@@ -7,6 +7,7 @@ straight into :class:`caust.pipeline.CauST` via ``model_factory``.
 
 Until then, use the working :class:`caust.models.simple.SimpleSpatialModel`.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -16,14 +17,16 @@ from .base import BaseSpatialModel
 
 
 class STAGATEAdapter(BaseSpatialModel):
-    def __init__(self, n_epochs: int = 1000, device: str = "cpu", random_seed: int = 42):
+    def __init__(
+        self, n_epochs: int = 1000, device: str = "cpu", random_seed: int = 42
+    ):
         self.n_epochs = n_epochs
         self.device = device
         self.random_seed = random_seed
         self.model = None
         self._X: np.ndarray | None = None
 
-    def fit(self, adata: AnnData) -> "STAGATEAdapter":
+    def fit(self, adata: AnnData) -> STAGATEAdapter:
         raise NotImplementedError(
             "STAGATEAdapter is a stub. Implement it against third_party/stagate, "
             "or use caust.models.SimpleSpatialModel for a working backbone."
