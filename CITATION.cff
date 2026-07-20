@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "CauST: Causal Gene Intervention for Robust Spatial Domain Identification"
+type: software
+authors:
+  - family-names: "Li"
+    given-names: "Jiawei"
+    email: "jli53355@usc.edu"
+    affiliation: "University of Southern California"
+repository-code: "https://github.com/land-saas/CauSt"
+url: "https://github.com/land-saas/CauSt"
+version: "0.1.0"
+date-released: "2026-03-01"
+license: MIT
+keywords:
+  - spatial transcriptomics
+  - causal inference
+  - gene selection
+  - graph neural networks
+  - spatial domain identification

@@ -2,16 +2,23 @@
 
 **Causal Gene Intervention for Robust Spatial Domain Identification**
 
+[![CI](https://github.com/land-saas/CauSt/actions/workflows/ci.yml/badge.svg)](https://github.com/land-saas/CauSt/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org)
+[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A599%25-brightgreen.svg)](#development)
+[![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue.svg)](https://mypy-lang.org)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 CauST selects genes for spatial domain identification by *causal intervention*
 rather than by variance (highly variable genes, HVGs). It silences each gene
 in-silico on a frozen spatial model, measures how much the spatial embedding
 shifts, and keeps only genes whose effect is **large and stable across donors**.
 This yields gene sets that transfer across tissue slices far better than HVGs.
 
-This repository is a **working prototype** of the method described in the CauST
-proposal. It ships a dependency-light reference backbone so the full pipeline
+This repository ships a dependency-light reference backbone so the full pipeline
 runs end-to-end today; real GNN backbones (STAGATE / GraphST / SpaGCN) plug in
-via a small interface.
+via a small interface. The method and empirical results are documented in the
+[technical report](docs/report/caust_report.pdf).
 
 ## The method (3 steps)
 
@@ -23,11 +30,15 @@ via a small interface.
 3. **Retrain** — feed the top-*K* causal genes (or soft sigmoid weights) to any
    downstream domain-identification model.
 
+See [`docs/methods.md`](docs/methods.md) for the formal derivation and the
+[technical report](docs/report/caust_report.pdf) for the full write-up.
+
 ## Install
 
 ```bash
 pip install -e .          # core (numpy / scipy / scikit-learn / anndata)
-pip install -e ".[dev]"   # + pytest
+pip install -e ".[dev]"   # + test, lint, type-check tooling
+pip install -e ".[docs]"  # + documentation tooling
 ```
 
 ## Quick start
@@ -55,6 +66,7 @@ caust demo --slices 3 --lam 2.0
 ## Using your own data
 
 Provide one `AnnData` per slice/donor with:
+
 - expression in `adata.X` (spots × genes), aligned `var_names` across slices,
 - spot coordinates in `adata.obsm['spatial']`.
 
@@ -75,8 +87,44 @@ src/caust/
   models/          backbones (SimpleSpatialModel; STAGATE stub)
 ```
 
+## Development
+
+```bash
+make install-dev   # editable install + dev/docs extras + pre-commit hooks
+make check         # ruff + mypy + pytest with coverage (fails under 90%)
+make format        # auto-format with ruff --fix and black
+make docs          # build the MkDocs site
+```
+
+The project targets clean `ruff`, `black`, and `mypy`, and ≥90% test coverage,
+all enforced in [CI](.github/workflows/ci.yml).
+
+## Documentation
+
+- User guide and API reference: [`docs/`](docs/) (served with MkDocs).
+- Formal methods: [`docs/methods.md`](docs/methods.md).
+- Technical report (PDF): [`docs/report/caust_report.pdf`](docs/report/caust_report.pdf).
+
 ## Status
 
-Prototype — the pipeline, scoring, and tests work on synthetic and real
-`AnnData`. Not yet wired: real STAGATE/GraphST training, integrated-gradients
-attribution, and the full DLPFC benchmark. See the proposal for the roadmap.
+The pipeline, scoring, invariance selection, and tests work on synthetic and
+real `AnnData`. Not yet wired: real STAGATE/GraphST training, integrated-
+gradients attribution, and the full DLPFC benchmark. See the
+[technical report](docs/report/caust_report.pdf) for the roadmap.
+
+## Citing
+
+If you use CauST in academic work, please cite it (see [`CITATION.cff`](CITATION.cff)):
+
+```bibtex
+@software{li_caust_2026,
+  author  = {Li, Jiawei},
+  title   = {CauST: Causal Gene Intervention for Robust Spatial Domain Identification},
+  year    = {2026},
+  url     = {https://github.com/land-saas/CauSt}
+}
+```
+
+## License
+
+[MIT](LICENSE) © 2026 Jiawei Li.
