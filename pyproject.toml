@@ -3,15 +3,36 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cau_st"
+name = "caust"
 version = "0.1.0"
-description = "CauST: Causal Gene Intervention for Robust Spatial Domain Identification"
+description = "Causal Gene Intervention for Robust Spatial Domain Identification"
 readme = "README.md"
-authors = [
-    {name = "Jiawei Li", email = "jli53355@usc.edu"}
-]
-license = {text = "MIT"}
 requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Jiawei Li", email = "jli53355@usc.edu" }]
+maintainers = [{ name = "Jiawei Li", email = "jli53355@usc.edu" }]
+keywords = [
+    "spatial-transcriptomics",
+    "causal-inference",
+    "gene-selection",
+    "graph-neural-networks",
+    "spatial-domain-identification",
+    "bioinformatics",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "numpy>=1.21.0",
     "scipy>=1.7.0",
@@ -21,16 +42,74 @@ dependencies = [
 
 [project.optional-dependencies]
 stagate = ["torch>=1.10", "scanpy>=1.9"]
-dev = ["pytest>=7.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mypy>=1.0",
+    "ruff>=0.4",
+    "black>=24.0",
+    "pre-commit>=3.0",
+]
+docs = ["mkdocs>=1.5", "mkdocs-material>=9.0", "mkdocstrings[python]>=0.24"]
 
 [project.scripts]
 caust = "caust.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/jiaweili/CauST"
+Homepage = "https://github.com/land-saas/CauSt"
+Repository = "https://github.com/land-saas/CauSt"
+Issues = "https://github.com/land-saas/CauSt/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+caust = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+branch = true
+source = ["caust"]
+omit = ["src/caust/models/stagate_adapter.py"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "W"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/caust"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+no_implicit_optional = true
+warn_return_any = true
