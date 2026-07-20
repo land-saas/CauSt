@@ -7,6 +7,7 @@ but carry no cross-donor domain signal. This mirrors the paper's central claim:
 variance-based HVG selection latches onto donor-specific noise, while CauST's
 knockout-invariance criterion recovers the stable causal genes.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -52,11 +53,11 @@ def make_synthetic_slice(
 
     # Shared background noise genes (low variance, no domain signal).
     off = n_causal
-    X[:, off:off + n_noise] = rng.normal(0, 0.5, (n_spots, n_noise))
+    X[:, off : off + n_noise] = rng.normal(0, 0.5, (n_spots, n_noise))
 
     # Donor-specific noise genes: high variance, but random (no domain signal).
     off = n_causal + n_noise
-    X[:, off:off + n_donor_noise] = rng.normal(
+    X[:, off : off + n_donor_noise] = rng.normal(
         0, donor_noise_strength, (n_spots, n_donor_noise)
     )
 
@@ -86,6 +87,8 @@ def make_synthetic_cohort(
     the *values* of the donor-noise genes are independent per donor.
     """
     return [
-        make_synthetic_slice(grid=grid, n_causal=n_causal, seed=seed + 100 * e, **kwargs)
+        make_synthetic_slice(
+            grid=grid, n_causal=n_causal, seed=seed + 100 * e, **kwargs
+        )
         for e in range(n_slices)
     ]

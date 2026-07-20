@@ -4,6 +4,7 @@ CauST operates on a spatial model f(X, A) where A is a spot-adjacency graph.
 This module builds that graph from spot coordinates stored in
 ``adata.obsm['spatial']`` and stores it (row-normalized) for the model to use.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -42,7 +43,8 @@ def build_spatial_graph(
     """
     if spatial_key not in adata.obsm:
         raise KeyError(
-            f"adata.obsm['{spatial_key}'] not found; store spot coordinates there first."
+            f"adata.obsm['{spatial_key}'] not found; "
+            "store spot coordinates there first."
         )
     coords = np.asarray(adata.obsm[spatial_key], dtype=float)
     n = coords.shape[0]
@@ -59,14 +61,15 @@ def build_spatial_graph(
             raise ValueError("radius must be given when method='radius'.")
         nn = NearestNeighbors(radius=radius).fit(coords)
         _, idxs = nn.radius_neighbors(coords)
-        rows, cols = [], []
+        row_list: list[int] = []
+        col_list: list[int] = []
         for i, neigh in enumerate(idxs):
             for j in neigh:
                 if j != i:
-                    rows.append(i)
-                    cols.append(j)
-        rows = np.asarray(rows, dtype=int)
-        cols = np.asarray(cols, dtype=int)
+                    row_list.append(i)
+                    col_list.append(int(j))
+        rows = np.asarray(row_list, dtype=int)
+        cols = np.asarray(col_list, dtype=int)
     else:
         raise ValueError(f"unknown method {method!r}; use 'knn' or 'radius'.")
 
@@ -80,7 +83,9 @@ def build_spatial_graph(
     return adata
 
 
-def normalized_adjacency(adj: sp.spmatrix, add_self_loops: bool = True) -> sp.csr_matrix:
+def normalized_adjacency(
+    adj: sp.spmatrix, add_self_loops: bool = True
+) -> sp.csr_matrix:
     """Row-normalized adjacency ``D^{-1}(A + I)`` used for graph smoothing."""
     adj = sp.csr_matrix(adj, dtype=float)
     if add_self_loops:

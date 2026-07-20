@@ -8,7 +8,10 @@ rewards genes with a *large and stable* effect across donors (Eq. 3):
 Step 3 turns the score into a gene set: hard top-K filtering, or soft sigmoid
 reweighting of the expression matrix.
 """
+
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 
@@ -33,10 +36,13 @@ def invariance_scores(deltas: np.ndarray, lam: float = 2.0) -> np.ndarray:
     deltas = np.atleast_2d(np.asarray(deltas, dtype=float))
     if lam < 0:
         raise ValueError("lam (lambda) must be >= 0.")
-    with np.errstate(invalid="ignore"):
+    # Genes that are nan in every slice legitimately yield an "empty slice";
+    # we map them to -inf below, so silence the expected numpy warnings.
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         mean = np.nanmean(deltas, axis=0)
         std = np.nanstd(deltas, axis=0)
-    s = mean - lam * std
+    s: np.ndarray = mean - lam * std
     s[np.isnan(mean)] = -np.inf
     return s
 

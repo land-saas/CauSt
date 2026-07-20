@@ -6,6 +6,7 @@ mean per-spot shift of the embedding when g is silenced (Eq. 1-2 of the paper):
     X~^(g) = X with column g set to 0
     delta^(g,e) = (1/N) * sum_i || f(X, A)_i - f(X~^(g), A)_i ||_2
 """
+
 from __future__ import annotations
 
 import numpy as np

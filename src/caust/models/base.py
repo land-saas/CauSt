@@ -7,6 +7,7 @@ that lets us run a forward pass on a perturbed (gene-knocked-out) input.
 Any backbone (STAGATE, GraphST, SpaGCN, or the bundled reference model) can be
 plugged in by implementing this interface.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -19,7 +20,7 @@ class BaseSpatialModel(ABC):
     """Abstract spatial-embedding backbone used by CauST."""
 
     @abstractmethod
-    def fit(self, adata: AnnData) -> "BaseSpatialModel":
+    def fit(self, adata: AnnData) -> BaseSpatialModel:
         """Train the model on one tissue slice. Returns ``self``."""
 
     @abstractmethod

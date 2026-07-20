@@ -7,9 +7,11 @@ Given several tissue slices (one AnnData per donor/slice), CauST:
   3. combines the per-slice effects into an invariance score (Step 2),
   4. exposes the causal gene set for retraining downstream models (Step 3).
 """
+
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from collections.abc import Sequence
+from typing import Callable
 
 import numpy as np
 from anndata import AnnData
@@ -50,7 +52,7 @@ class CauST:
         self.scores_: np.ndarray | None = None  # (G_common,)
         self.models_: list[BaseSpatialModel] = []
 
-    def fit(self, adatas: Sequence[AnnData], verbose: bool = False) -> "CauST":
+    def fit(self, adatas: Sequence[AnnData], verbose: bool = False) -> CauST:
         """Train one backbone per slice and score genes by knockout invariance."""
         if len(adatas) == 0:
             raise ValueError("provide at least one AnnData slice.")
@@ -62,9 +64,7 @@ class CauST:
         if not common:
             raise ValueError("slices share no common genes (check var_names).")
         # Deterministic order from the first slice.
-        self.common_genes_ = np.array(
-            [g for g in adatas[0].var_names if g in common]
-        )
+        self.common_genes_ = np.array([g for g in adatas[0].var_names if g in common])
 
         deltas = []
         self.models_ = []
@@ -83,28 +83,29 @@ class CauST:
         self.scores_ = invariance_scores(self.deltas_, lam=self.lam)
         return self
 
-    def _check_fitted(self) -> None:
-        if self.scores_ is None:
+    def _check_fitted(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (scores, common_genes), raising if the model is not fitted."""
+        if self.scores_ is None or self.common_genes_ is None:
             raise ValueError("CauST is not fitted; call fit() first.")
+        return self.scores_, self.common_genes_
 
     def select_genes(self, n_top_genes: int) -> np.ndarray:
         """Names of the top-K causally invariant genes (Step 3, hard filter)."""
-        self._check_fitted()
-        idx = select_causal_genes(self.scores_, n_top_genes)
-        return self.common_genes_[idx]
+        scores, common_genes = self._check_fitted()
+        idx = select_causal_genes(scores, n_top_genes)
+        selected: np.ndarray = common_genes[idx]
+        return selected
 
     def soft_weights(self, temperature: float = 1.0) -> np.ndarray:
         """Sigmoid weights over common genes (Step 3, soft reweighting)."""
-        self._check_fitted()
-        return soft_weights(self.scores_, temperature=temperature)
+        scores, _ = self._check_fitted()
+        return soft_weights(scores, temperature=temperature)
 
     def ranking(self) -> list[tuple[str, float]]:
         """All common genes as (name, score) pairs, best first."""
-        self._check_fitted()
-        order = np.argsort(-self.scores_, kind="stable")
-        return [
-            (str(self.common_genes_[i]), float(self.scores_[i])) for i in order
-        ]
+        scores, common_genes = self._check_fitted()
+        order = np.argsort(-scores, kind="stable")
+        return [(str(common_genes[i]), float(scores[i])) for i in order]
 
     def transform(self, adata: AnnData, n_top_genes: int) -> AnnData:
         """Subset an AnnData to the causal gene set for downstream retraining."""

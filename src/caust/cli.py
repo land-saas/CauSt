@@ -1,4 +1,5 @@
 """Minimal command-line entry point: ``caust demo``."""
+
 from __future__ import annotations
 
 import argparse

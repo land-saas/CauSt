@@ -4,6 +4,7 @@ The paper uses mclust (an R Gaussian-mixture model) for clustering. To keep the
 prototype pure-Python, we default to a scikit-learn Gaussian mixture, which plays
 the same role. Swap in an mclust bridge later if exact parity is needed.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -20,20 +21,24 @@ def cluster_embedding(
         covariance_type="full",
         random_state=random_state,
     )
-    return gm.fit_predict(np.asarray(embedding, dtype=float))
+    labels: np.ndarray = np.asarray(gm.fit_predict(np.asarray(embedding, dtype=float)))
+    return labels
 
 
-def ari(true_labels, pred_labels) -> float:
+def ari(true_labels: np.ndarray, pred_labels: np.ndarray) -> float:
     """Adjusted Rand Index against manual annotations."""
     return float(adjusted_rand_score(_encode(true_labels), _encode(pred_labels)))
 
 
-def nmi(true_labels, pred_labels) -> float:
+def nmi(true_labels: np.ndarray, pred_labels: np.ndarray) -> float:
     """Normalized Mutual Information (supplementary metric)."""
-    return float(normalized_mutual_info_score(_encode(true_labels), _encode(pred_labels)))
+    return float(
+        normalized_mutual_info_score(_encode(true_labels), _encode(pred_labels))
+    )
 
 
-def _encode(labels) -> np.ndarray:
-    labels = np.asarray(labels)
-    _, inv = np.unique(labels, return_inverse=True)
-    return inv
+def _encode(labels: np.ndarray) -> np.ndarray:
+    arr = np.asarray(labels)
+    _, inv = np.unique(arr, return_inverse=True)
+    encoded: np.ndarray = np.asarray(inv)
+    return encoded

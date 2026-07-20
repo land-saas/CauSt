@@ -12,6 +12,7 @@ matrix produces a deterministic, gene-specific embedding shift -- exactly what
 CauST's knockout scoring needs. Swap this out for a real backbone later via
 :class:`caust.models.base.BaseSpatialModel`.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -48,7 +49,7 @@ class SimpleSpatialModel(BaseSpatialModel):
         self._W: np.ndarray | None = None
         self._A_norm: sp.csr_matrix | None = None
 
-    def fit(self, adata: AnnData) -> "SimpleSpatialModel":
+    def fit(self, adata: AnnData) -> SimpleSpatialModel:
         if CONN_KEY not in adata.obsp:
             build_spatial_graph(adata, n_neighbors=self.n_neighbors)
         self._A_norm = normalized_adjacency(adata.obsp[CONN_KEY])
@@ -80,13 +81,15 @@ class SimpleSpatialModel(BaseSpatialModel):
             Z = Xc @ self._W
             for _ in range(self.smooth_iters):
                 Z = self._A_norm @ Z
-        return Z
+        embedding: np.ndarray = np.asarray(Z)
+        return embedding
 
     def get_embedding(self, adata: AnnData | None = None) -> np.ndarray:
         self._check_fitted()
-        X = self._X if adata is None else _dense(adata.X)
+        X = self._get_expression() if adata is None else _dense(adata.X)
         return self.forward(X)
 
     def _get_expression(self) -> np.ndarray:
         self._check_fitted()
+        assert self._X is not None  # set by fit(); _check_fitted guarantees it
         return self._X

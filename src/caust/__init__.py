@@ -4,6 +4,7 @@ A backbone-agnostic toolkit that selects genes by *in-silico knockout* on a
 frozen spatial model and *cross-donor invariance*, rather than by variance
 (HVGs). See :class:`caust.pipeline.CauST` for the end-to-end entry point.
 """
+
 from __future__ import annotations
 
 from .cluster import ari, cluster_embedding, nmi
