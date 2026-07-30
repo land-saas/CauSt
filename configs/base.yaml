@@ -1,0 +1,40 @@
+# Shared defaults for every CauST experiment.
+#
+# Experiment configs inherit from this with `defaults: ../base.yaml` and
+# override only what they change. The fully-resolved config is written to
+# results/<run_id>/config.resolved.yaml, so a run is always explained by a file.
+
+name: base
+
+# Reproducibility controls. `threads` pins the BLAS thread pool for the run:
+# BLAS reduction order depends on thread count, so leaving it unpinned makes
+# results differ in the low-order bits between machines. Keep it at 1 unless
+# you have a reason not to, and expect a new digest if you change it.
+seed: 0
+threads: 1
+
+data:
+  source: synthetic
+  n_slices: 3
+  grid: 20
+  n_causal: 8
+
+model:
+  backend: simple
+  n_components: 30
+  smooth_iters: 2
+  n_neighbors: 6
+
+selection:
+  lam: 2.0
+  n_top_genes: 8
+
+evaluation:
+  # Select genes on every slice but the last, then evaluate on that held-out
+  # slice. This is the cross-donor transfer claim; without it the evaluation
+  # leaks the slice the genes were chosen on.
+  holdout: true
+  # The Gaussian mixture lands in a seed-dependent local optimum, and a noisy
+  # gene set is much more sensitive to that than a clean one. Average over
+  # several restarts so the comparison does not hinge on one lucky seed.
+  n_restarts: 5

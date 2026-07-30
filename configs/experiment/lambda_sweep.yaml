@@ -1,0 +1,24 @@
+# Sensitivity of gene selection to the invariance penalty lambda.
+#
+# lam=0 reduces the score to the mean knockout effect (the "high-delta"
+# baseline); larger lambda demands cross-donor stability. Run the sweep with:
+#
+#   for lam in 0 0.5 1 2 4; do
+#     caust run -c configs/experiment/lambda_sweep.yaml --set selection.lam=$lam
+#   done
+#
+# Each value produces its own content-addressed run directory, so the sweep
+# accumulates rather than overwriting.
+
+defaults: ../base.yaml
+
+name: lambda_sweep
+
+data:
+  n_slices: 4
+  grid: 16
+  n_causal: 8
+
+selection:
+  lam: 2.0
+  n_top_genes: 8

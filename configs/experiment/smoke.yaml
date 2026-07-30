@@ -1,0 +1,18 @@
+# Deliberately tiny run used by CI and by `make verify` as a fast end-to-end
+# check that the config -> run -> artifact -> verify loop still works.
+# Not a scientific result; the grid is far too small to mean anything.
+
+defaults: ../base.yaml
+
+name: smoke
+
+data:
+  n_slices: 2
+  grid: 8
+  n_causal: 4
+
+selection:
+  n_top_genes: 4
+
+model:
+  n_components: 8

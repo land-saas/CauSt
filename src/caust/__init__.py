@@ -8,13 +8,16 @@ frozen spatial model and *cross-donor invariance*, rather than by variance
 from __future__ import annotations
 
 from .cluster import ari, cluster_embedding, nmi
+from .config import ExperimentConfig, load_config
 from .data import make_synthetic_cohort, make_synthetic_slice
+from .experiment import run_experiment, verify_run
 from .graph import build_spatial_graph, normalized_adjacency
 from .intervention import knockout_scores
 from .invariance import invariance_scores, select_causal_genes, soft_weights
 from .models.base import BaseSpatialModel
 from .models.simple import SimpleSpatialModel
 from .pipeline import CauST
+from .repro import collect_provenance, deterministic, set_global_seeds
 
 __version__ = "0.1.0"
 
@@ -22,6 +25,13 @@ __all__ = [
     "CauST",
     "BaseSpatialModel",
     "SimpleSpatialModel",
+    "ExperimentConfig",
+    "load_config",
+    "run_experiment",
+    "verify_run",
+    "deterministic",
+    "set_global_seeds",
+    "collect_provenance",
     "knockout_scores",
     "invariance_scores",
     "select_causal_genes",

@@ -1,0 +1,21 @@
+# The headline experiment: CauST vs. the variance (HVG) baseline, scored on a
+# donor that was never used for gene selection.
+#
+#   make repro          # run it and write results/synthetic_holdout-<digest>/
+#   caust verify <dir>  # re-run and confirm the metrics still match
+
+defaults: ../base.yaml
+
+name: synthetic_holdout
+
+data:
+  n_slices: 3
+  grid: 20
+  n_causal: 8
+
+selection:
+  lam: 2.0
+  n_top_genes: 8
+
+evaluation:
+  holdout: true
