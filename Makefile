@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 PY ?= python
 
-.PHONY: help install install-dev lint format typecheck test cov demo docs build clean check
+.PHONY: help install install-dev lint format typecheck test cov demo benchmark docs build clean check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -16,11 +16,11 @@ install-dev:  ## Install with dev + docs extras and pre-commit hooks
 	pre-commit install
 
 lint:  ## Run ruff linter
-	ruff check src tests
+	ruff check src tests scripts
 
 format:  ## Auto-format with black and ruff --fix
-	ruff check --fix src tests
-	black src tests
+	ruff check --fix src tests scripts
+	black src tests scripts
 
 typecheck:  ## Run mypy static type checking
 	mypy
@@ -33,6 +33,9 @@ cov:  ## Run tests with coverage (fails under 90%)
 
 demo:  ## Run the end-to-end synthetic demo
 	$(PY) scripts/demo.py
+
+benchmark:  ## Run the CauST vs. HVG benchmark and regenerate the figures
+	$(PY) scripts/benchmark.py --figures docs/figures
 
 docs:  ## Build the documentation site
 	mkdocs build --strict

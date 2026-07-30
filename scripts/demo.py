@@ -6,9 +6,8 @@ Shows that CauST's knockout-invariance score ranks the shared CAUSAL_* genes
 above the high-variance DONORNOISE_* genes, and that clustering on the causal
 gene set recovers the ground-truth spatial domains.
 """
-from __future__ import annotations
 
-import numpy as np
+from __future__ import annotations
 
 from caust import CauST, SimpleSpatialModel, ari, cluster_embedding
 from caust.data import make_synthetic_cohort

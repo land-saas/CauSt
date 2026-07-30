@@ -7,7 +7,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A599%25-brightgreen.svg)](#development)
 [![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue.svg)](https://mypy-lang.org)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/land-saas/CauSt/blob/main/LICENSE)
 
 CauST selects genes for spatial domain identification by *causal intervention*
 rather than by variance (highly variable genes, HVGs). It silences each gene
@@ -18,7 +18,7 @@ This yields gene sets that transfer across tissue slices far better than HVGs.
 This repository ships a dependency-light reference backbone so the full pipeline
 runs end-to-end today; real GNN backbones (STAGATE / GraphST / SpaGCN) plug in
 via a small interface. The method and empirical results are documented in the
-[technical report](docs/report/caust_report.pdf).
+[technical report](https://github.com/land-saas/CauSt/blob/main/docs/report/caust_report.pdf).
 
 ## The method (3 steps)
 
@@ -30,13 +30,51 @@ via a small interface. The method and empirical results are documented in the
 3. **Retrain** — feed the top-*K* causal genes (or soft sigmoid weights) to any
    downstream domain-identification model.
 
-See [`docs/methods.md`](docs/methods.md) for the formal derivation and the
-[technical report](docs/report/caust_report.pdf) for the full write-up.
+See [`docs/methods.md`](https://github.com/land-saas/CauSt/blob/main/docs/methods.md)
+for the formal derivation and the
+[technical report](https://github.com/land-saas/CauSt/blob/main/docs/report/caust_report.pdf)
+for the full write-up.
+
+## Results: CauST vs. the variance (HVG) baseline
+
+Three synthetic donors share a set of causal genes that define the spatial
+domains identically in every donor. Each donor also carries its own
+donor-specific noise genes, which have **higher variance** than the causal genes
+but carry no cross-donor signal — the trap that variance-based HVG selection
+falls into. Genes are selected on the training donors only and evaluated on a
+**held-out donor**, which is the actual robustness claim.
+
+```
+$ python scripts/benchmark.py
+
+Causal genes recovered in the top-8:
+  HVG    1/8
+  CauST  8/8
+
+Held-out donor 3 (never used for gene selection):
+  ARI  all genes  (68 genes)  1.000
+  ARI  HVG        ( 8 genes)  0.798
+  ARI  CauST      ( 8 genes)  1.000
+```
+
+CauST matches the all-genes accuracy using **8× fewer genes**, while the
+variance baseline at the same budget loses 0.20 ARI.
+
+![CauST vs HVG benchmark](https://raw.githubusercontent.com/land-saas/CauSt/main/docs/figures/benchmark.png)
+
+Panels A and B are the crux: the invariance score isolates the causal genes,
+while variance ranks the donor-specific noise genes highest.
+
+![Spatial domains on the held-out donor](https://raw.githubusercontent.com/land-saas/CauSt/main/docs/figures/domains.png)
+
+Reproduce the numbers with `python scripts/benchmark.py`, or `make benchmark` to
+also regenerate the figures (plotting needs `pip install ".[viz]"`).
 
 ## Install
 
 ```bash
 pip install -e .          # core (numpy / scipy / scikit-learn / anndata)
+pip install -e ".[viz]"   # + matplotlib, for the benchmark figures
 pip install -e ".[dev]"   # + test, lint, type-check tooling
 pip install -e ".[docs]"  # + documentation tooling
 ```
@@ -97,24 +135,24 @@ make docs          # build the MkDocs site
 ```
 
 The project targets clean `ruff`, `black`, and `mypy`, and ≥90% test coverage,
-all enforced in [CI](.github/workflows/ci.yml).
+all enforced in [CI](https://github.com/land-saas/CauSt/blob/main/.github/workflows/ci.yml).
 
 ## Documentation
 
-- User guide and API reference: [`docs/`](docs/) (served with MkDocs).
-- Formal methods: [`docs/methods.md`](docs/methods.md).
-- Technical report (PDF): [`docs/report/caust_report.pdf`](docs/report/caust_report.pdf).
+- User guide and API reference: [`docs/`](https://github.com/land-saas/CauSt/blob/main/docs) (served with MkDocs).
+- Formal methods: [`docs/methods.md`](https://github.com/land-saas/CauSt/blob/main/docs/methods.md).
+- Technical report (PDF): [`docs/report/caust_report.pdf`](https://github.com/land-saas/CauSt/blob/main/docs/report/caust_report.pdf).
 
 ## Status
 
 The pipeline, scoring, invariance selection, and tests work on synthetic and
 real `AnnData`. Not yet wired: real STAGATE/GraphST training, integrated-
 gradients attribution, and the full DLPFC benchmark. See the
-[technical report](docs/report/caust_report.pdf) for the roadmap.
+[technical report](https://github.com/land-saas/CauSt/blob/main/docs/report/caust_report.pdf) for the roadmap.
 
 ## Citing
 
-If you use CauST in academic work, please cite it (see [`CITATION.cff`](CITATION.cff)):
+If you use CauST in academic work, please cite it (see [`CITATION.cff`](https://github.com/land-saas/CauSt/blob/main/CITATION.cff)):
 
 ```bibtex
 @software{li_caust_2026,
@@ -127,4 +165,4 @@ If you use CauST in academic work, please cite it (see [`CITATION.cff`](CITATION
 
 ## License
 
-[MIT](LICENSE) © 2026 Jiawei Li.
+[MIT](https://github.com/land-saas/CauSt/blob/main/LICENSE) © 2026 Jiawei Li.

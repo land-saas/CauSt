@@ -45,7 +45,7 @@ def test_knockout_shifts_embedding():
 
 
 def test_invariance_scoring_math():
-    deltas = np.array([[1.0, 0.5], [1.0, 5.0]])  # gene1 stable, gene0... wait
+    deltas = np.array([[1.0, 0.5], [1.0, 5.0]])
     # gene 0: mean 1.0 std 0 -> score 1.0 ; gene 1: mean 2.75 std 2.25
     s = invariance_scores(deltas, lam=2.0)
     assert s[0] == pytest.approx(1.0)
@@ -89,3 +89,30 @@ def test_invariance_beats_high_delta_on_noise():
     inv_causal = sum(g.startswith("CAUSAL") for g in inv_top)
     hd_causal = sum(g.startswith("CAUSAL") for g in high_delta)
     assert inv_causal >= hd_causal
+
+
+def test_beats_variance_baseline_on_held_out_donor():
+    """The project's central claim: CauST transfers across donors, HVGs do not.
+
+    Genes are chosen on the training donors only. Variance-based selection is
+    drawn to the donor-specific noise genes (which are the highest-variance
+    features by construction), while the knockout-invariance score is not.
+    """
+    cohort = make_synthetic_cohort(n_slices=3, grid=14, n_causal=8, seed=0)
+    train = cohort[:-1]
+
+    cs = CauST(lam=2.0).fit(train)
+    caust_sel = cs.select_genes(8)
+
+    names = np.asarray(cs.common_genes_)
+    var = np.mean([np.asarray(a.X, dtype=float).var(axis=0) for a in train], axis=0)
+    hvg_sel = names[np.argsort(-var)[:8]]
+
+    caust_causal = sum(str(g).startswith("CAUSAL") for g in caust_sel)
+    hvg_causal = sum(str(g).startswith("CAUSAL") for g in hvg_sel)
+
+    assert caust_causal > hvg_causal
+    # The baseline is actively misled by the donor-specific noise genes.
+    assert sum(str(g).startswith("DONORNOISE") for g in hvg_sel) > sum(
+        str(g).startswith("DONORNOISE") for g in caust_sel
+    )
