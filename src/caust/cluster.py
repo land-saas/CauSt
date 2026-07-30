@@ -21,7 +21,14 @@ def cluster_embedding(
         covariance_type="full",
         random_state=random_state,
     )
-    labels: np.ndarray = np.asarray(gm.fit_predict(np.asarray(embedding, dtype=float)))
+    # The k-means initialization inside GaussianMixture computes pairwise
+    # distances via BLAS matmul, which raises spurious divide/overflow/invalid
+    # FP flags on some backends (macOS Accelerate + numpy 2.x) even when the
+    # input and the resulting labels are entirely finite.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        labels: np.ndarray = np.asarray(
+            gm.fit_predict(np.asarray(embedding, dtype=float))
+        )
     return labels
 
 

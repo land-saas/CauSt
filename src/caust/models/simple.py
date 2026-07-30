@@ -64,7 +64,11 @@ class SimpleSpatialModel(BaseSpatialModel):
         Xc = (X - self._mean) / self._std
         d = min(self.n_components, min(Xc.shape) - 1)
         pca = PCA(n_components=d, random_state=self.random_state)
-        pca.fit(Xc)
+        # Same BLAS FP-flag guard as forward(): on a narrow matrix PCA takes the
+        # covariance path (X.T @ X), which raises spurious divide/overflow/
+        # invalid flags on some backends even though the inputs are finite.
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            pca.fit(Xc)
         self._W = pca.components_.T  # (G x d)
         return self
 

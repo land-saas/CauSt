@@ -28,7 +28,7 @@ def knockout_scores(
     gene_indices
         Genes to score. Defaults to all genes. Genes not scored get ``nan``.
     verbose
-        Print progress every 200 genes.
+        Print progress roughly ten times over the scored genes.
 
     Returns
     -------
@@ -44,9 +44,11 @@ def knockout_scores(
     gene_indices = np.asarray(gene_indices, dtype=int)
 
     delta = np.full(n_genes, np.nan, dtype=float)
+    total = len(gene_indices)
+    step = max(1, total // 10)
     for count, g in enumerate(gene_indices):
         Zg = model.get_knockout_embedding(int(g))
         delta[g] = np.linalg.norm(base - Zg, axis=1).mean()
-        if verbose and count % 200 == 0:
-            print(f"  knockout scoring {count}/{len(gene_indices)} genes")
+        if verbose and (count + 1) % step == 0:
+            print(f"  knockout scoring {count + 1}/{total} genes")
     return delta
