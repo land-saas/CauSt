@@ -1,0 +1,27 @@
+# Fully pinned runtime environment for reproducing CauST results.
+#
+# Regenerate with:  make lock
+# Install with:     pip install -r requirements.lock
+#
+# Captured on: Python 3.9.6 / Darwin arm64
+# Resolved versions are platform-specific; on a different OS or Python
+# version pip may legitimately resolve different wheels.
+
+anndata==0.10.9
+array_api_compat==1.11.2
+exceptiongroup==1.3.1
+h5py==3.14.0
+joblib==1.5.3
+natsort==8.4.0
+numpy==2.0.2
+packaging==26.2
+pandas==2.3.3
+python-dateutil==2.9.0.post0
+pytz==2026.3.post1
+PyYAML==6.0.3
+scikit-learn==1.6.1
+scipy==1.13.1
+six==1.17.0
+threadpoolctl==3.6.0
+typing_extensions==4.16.0
+tzdata==2026.3

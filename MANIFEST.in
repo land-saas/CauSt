@@ -1,11 +1,15 @@
 # Files shipped in the source distribution (the wheel stays lean and is
 # unaffected). setuptools' default sdist manifest only globs `test*.py`, so
 # tests/conftest.py -- and everything below -- must be listed explicitly.
-include CHANGELOG.md CITATION.cff CONTRIBUTING.md
-include Makefile requirements.txt mkdocs.yml .pre-commit-config.yaml
+include CHANGELOG.md CITATION.cff CONTRIBUTING.md REPRODUCIBILITY.md
+include Makefile requirements.txt requirements.lock mkdocs.yml
+include .pre-commit-config.yaml Dockerfile
 recursive-include tests *.py
 recursive-include scripts *.py
 recursive-include docs *.md
+# Experiment configs are inputs to a result, not documentation -- a run cannot
+# be reproduced from the sdist without them.
+recursive-include configs *.yaml
 include docs/report/caust_report.tex docs/report/caust_report.pdf
 
 # Never ship generated output, vendored sources, or local data.

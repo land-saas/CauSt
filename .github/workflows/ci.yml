@@ -55,6 +55,32 @@ jobs:
           name: coverage
           path: coverage.xml
 
+  determinism:
+    name: Results reproduce byte-for-byte
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      # Two separate processes, so anything that leaks across a single
+      # interpreter (global RNG state, cached imports) cannot hide a difference.
+      - name: Run the same config twice in separate processes
+        run: |
+          caust run -c configs/experiment/smoke.yaml -o run_a
+          caust run -c configs/experiment/smoke.yaml -o run_b
+      - name: Artifacts must be byte-identical
+        run: |
+          # manifest.json is excluded: it records a timestamp and the machine's
+          # own provenance, which legitimately differ between two runs.
+          diff -r --exclude=manifest.json run_a run_b
+      - name: Recorded config must still reproduce its metrics
+        run: caust verify run_a/smoke-*/
+
   packaging:
     name: Distribution installs and tests clean
     runs-on: ubuntu-latest

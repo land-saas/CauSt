@@ -29,6 +29,7 @@ nav:
   - Usage: usage.md
   - Methods: methods.md
   - API reference: api.md
+  - Reproducibility: https://github.com/land-saas/CauSt/blob/main/REPRODUCIBILITY.md
 
 markdown_extensions:
   - admonition

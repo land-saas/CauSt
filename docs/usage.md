@@ -23,6 +23,22 @@ cs.soft_weights()           # sigmoid weights over all common genes
 cs.transform(cohort[0], 8)  # AnnData subset to the causal gene set
 ```
 
+## Running an experiment
+
+Experiments are described in YAML under `configs/` rather than hard-coded in a
+script, and each run writes a content-addressed directory with its resolved
+config, metrics, and a provenance manifest:
+
+```bash
+caust run -c configs/experiment/synthetic_holdout.yaml
+caust run -c configs/experiment/lambda_sweep.yaml --set selection.lam=1.0
+caust verify results/synthetic_holdout-<digest>/
+```
+
+See [REPRODUCIBILITY.md](https://github.com/land-saas/CauSt/blob/main/REPRODUCIBILITY.md)
+for what is controlled (seed, BLAS thread count, environment) and how to
+reproduce a published result.
+
 ## Command-line demo
 
 ```bash

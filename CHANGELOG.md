@@ -6,7 +6,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Config-driven experiments and a reproducibility harness.** Experiments are
+  described in YAML under `configs/` (with `defaults:` inheritance and
+  `--set key=value` overrides) and run with `caust run`, which writes a
+  content-addressed directory under `results/` containing the resolved config,
+  metrics, per-gene scores, and a provenance manifest (git commit and dirty
+  flag, package versions, platform, seed, BLAS thread counts, artifact
+  checksums). `caust verify <rundir>` re-runs a recorded config and fails if the
+  numbers moved. New modules: `caust.config`, `caust.experiment`, `caust.repro`.
+- `requirements.lock` (pinned runtime environment), a `Dockerfile` for a
+  hermetic run, `REPRODUCIBILITY.md`, and `make repro` / `verify` / `determinism`
+  / `lock` targets.
+- A CI job that runs the same config in two separate processes and fails unless
+  the artifacts are byte-identical.
+
+### Changed
+- **Held-out ARI is now averaged over five clustering restarts.** The Gaussian
+  mixture converges to a seed-dependent local optimum, and the HVG gene set is
+  far more sensitive to that than the CauST set. The previously reported HVG ARI
+  of 0.798 was the best of five restarts; the honest figure is **0.537 ± 0.133**
+  against CauST's 1.000 ± 0.000. The spread is itself a result: clustering on the
+  CauST gene set is stable across seeds, while the HVG set is not.
+- `scripts/benchmark.py` is now a thin wrapper over `caust run`, so the script
+  and the CLI can no longer report different numbers for the same experiment.
+- Run outputs under `results/` are no longer blanket-ignored by git; a specific
+  run can be committed with `git add -f` as a reference point.
+
 ### Fixed
+- The provenance manifest recorded the machine's ambient BLAS thread count
+  rather than the pinned count the run actually used.
+- `caust verify` crashed instead of reporting an error when a run directory had
+  no `config.resolved.yaml`.
 - **`MANIFEST.in`: the source distribution was missing `tests/conftest.py`**, so
   the shipped test suite failed with 8 fixture errors (32 passed / 8 errors).
   setuptools' default sdist manifest globs `test*.py`, which does not match

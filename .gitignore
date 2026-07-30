@@ -36,7 +36,17 @@ coverage.xml
 
 # Data & results (large files)
 data/
-results/
+
+# Run outputs are regenerable from configs/, so they are not tracked by
+# default. A specific result can still be committed as a reference point with
+# `git add -f results/<run_id>` -- the manifest records the commit and
+# environment it came from, so a tracked run stays meaningful.
+results/*
+!results/.gitkeep
+
+# Scratch dirs created by `make determinism` and `make lock`.
+.determinism/
+.lockenv/
 *.h5ad
 *.zarr
 
