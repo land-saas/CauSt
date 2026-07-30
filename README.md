@@ -45,20 +45,24 @@ falls into. Genes are selected on the training donors only and evaluated on a
 **held-out donor**, which is the actual robustness claim.
 
 ```
-$ python scripts/benchmark.py
+$ caust run -c configs/experiment/synthetic_holdout.yaml
 
 Causal genes recovered in the top-8:
   HVG    1/8
   CauST  8/8
 
-Held-out donor 3 (never used for gene selection):
-  ARI  all genes  (68 genes)  1.000
-  ARI  HVG        ( 8 genes)  0.798
-  ARI  CauST      ( 8 genes)  1.000
+Held-out donor 3 (never used for gene selection, 5 restarts):
+  ARI  all genes  (68 genes)  1.000 +/- 0.000
+  ARI  HVG        ( 8 genes)  0.537 +/- 0.133
+  ARI  CauST      ( 8 genes)  1.000 +/- 0.000
 ```
 
-CauST matches the all-genes accuracy using **8× fewer genes**, while the
-variance baseline at the same budget loses 0.20 ARI.
+CauST matches the all-genes accuracy using **8× fewer genes**, while the variance
+baseline at the same budget loses roughly 0.46 ARI. ARI is averaged over five
+clustering restarts because the Gaussian mixture lands in a seed-dependent local
+optimum — and the spread is itself informative: the CauST gene set clusters
+identically every time (±0.000), while the HVG set swings between 0.44 and 0.80
+(±0.133) depending on the seed.
 
 ![CauST vs HVG benchmark](https://raw.githubusercontent.com/land-saas/CauSt/main/docs/figures/benchmark.png)
 
@@ -67,8 +71,18 @@ while variance ranks the donor-specific noise genes highest.
 
 ![Spatial domains on the held-out donor](https://raw.githubusercontent.com/land-saas/CauSt/main/docs/figures/domains.png)
 
-Reproduce the numbers with `python scripts/benchmark.py`, or `make benchmark` to
-also regenerate the figures (plotting needs `pip install ".[viz]"`).
+Every run is config-driven and writes a content-addressed directory under
+`results/` with the resolved config, the metrics, and a provenance manifest
+(git commit, package versions, platform, seed, BLAS thread counts, artifact
+checksums). `caust verify <rundir>` re-runs the recorded config and fails if the
+numbers have moved. See [REPRODUCIBILITY.md](https://github.com/land-saas/CauSt/blob/main/REPRODUCIBILITY.md)
+for the full workflow.
+
+```bash
+make repro          # run the headline experiment
+make verify         # re-run every recorded result and confirm it still matches
+make determinism    # prove two separate processes produce byte-identical output
+```
 
 ## Install
 
