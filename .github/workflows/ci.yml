@@ -24,9 +24,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Ruff
-        run: ruff check src tests
+        run: ruff check src tests scripts
       - name: Black
-        run: black --check src tests
+        run: black --check src tests scripts
       - name: Mypy
         run: mypy
 
@@ -54,3 +54,34 @@ jobs:
         with:
           name: coverage
           path: coverage.xml
+
+  packaging:
+    name: Distribution installs and tests clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+      - name: Check metadata renders on PyPI
+        run: twine check --strict dist/*
+      # The `test` job installs from the git checkout, so it cannot catch files
+      # that are missing from the distribution (e.g. tests/conftest.py). Run the
+      # shipped suite from the unpacked sdist instead.
+      - name: Test from the unpacked sdist
+        run: |
+          mkdir -p /tmp/sd && tar -xzf dist/*.tar.gz -C /tmp/sd
+          cd /tmp/sd/caust-*
+          pip install ".[dev]"
+          pytest
+      - name: Wheel imports and console script works
+        run: |
+          python -m venv /tmp/wheelenv
+          /tmp/wheelenv/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/wheelenv/bin/python -c "import caust; print(caust.__version__)"
+          /tmp/wheelenv/bin/caust demo --slices 2 --n-causal 4

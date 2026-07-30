@@ -1,0 +1,15 @@
+# Files shipped in the source distribution (the wheel stays lean and is
+# unaffected). setuptools' default sdist manifest only globs `test*.py`, so
+# tests/conftest.py -- and everything below -- must be listed explicitly.
+include CHANGELOG.md CITATION.cff CONTRIBUTING.md
+include Makefile requirements.txt mkdocs.yml .pre-commit-config.yaml
+recursive-include tests *.py
+recursive-include scripts *.py
+recursive-include docs *.md
+include docs/report/caust_report.tex docs/report/caust_report.pdf
+
+# Never ship generated output, vendored sources, or local data.
+prune third_party
+prune data
+prune results
+prune .github
