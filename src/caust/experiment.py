@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import scipy.sparse as sp
 from anndata import AnnData
 
 from .cluster import ari, nmi
@@ -47,15 +48,24 @@ def build_cohort(cfg: ExperimentConfig) -> list[AnnData]:
     """Materialize the cohort described by the ``data:`` section."""
     spec = dict(cfg.data)
     source = spec.pop("source", "synthetic")
-    if source != "synthetic":
-        raise ExperimentError(
-            f"unsupported data.source {source!r}; only 'synthetic' is wired up so far"
-        )
-    spec.setdefault("seed", cfg.seed)
-    try:
-        return make_synthetic_cohort(**spec)
-    except TypeError as exc:
-        raise ExperimentError(f"invalid data: section -- {exc}") from None
+    if source == "synthetic":
+        spec.setdefault("seed", cfg.seed)
+        try:
+            return make_synthetic_cohort(**spec)
+        except TypeError as exc:
+            raise ExperimentError(f"invalid data: section -- {exc}") from None
+    if source == "dlpfc":
+        from .dlpfc import DLPFCError, load_dlpfc_cohort
+
+        try:
+            return load_dlpfc_cohort(**spec)
+        except TypeError as exc:
+            raise ExperimentError(f"invalid data: section -- {exc}") from None
+        except DLPFCError as exc:
+            raise ExperimentError(str(exc)) from None
+    raise ExperimentError(
+        f"unsupported data.source {source!r}; expected 'synthetic' or 'dlpfc'"
+    )
 
 
 def _model_factory(cfg: ExperimentConfig):
@@ -74,7 +84,12 @@ def _model_factory(cfg: ExperimentConfig):
 
 def hvg_scores(adatas: Sequence[AnnData]) -> np.ndarray:
     """Baseline gene score: mean expression variance across the given slices."""
-    per_slice = [np.asarray(a.X, dtype=float).var(axis=0) for a in adatas]
+    per_slice = []
+    for a in adatas:
+        X = a.X
+        if sp.issparse(X):
+            X = X.todense()
+        per_slice.append(np.asarray(X, dtype=float).var(axis=0).ravel())
     scores: np.ndarray = np.mean(per_slice, axis=0)
     return scores
 
@@ -207,6 +222,20 @@ def run_experiment(
         "selected_genes": {"caust": caust_sel, "hvg": hvg_sel},
     }
 
+    # Only when the config names known marker genes (real data): how many of
+    # the markers that made the candidate pool did each method's top-K keep?
+    # Config-gated so the metrics of existing synthetic runs stay byte-stable.
+    marker_genes = cfg.evaluation.get("marker_genes")
+    if marker_genes:
+        markers = {str(g) for g in marker_genes}
+        in_pool = sorted(markers & {str(g) for g in names})
+        metrics["marker_recovery"] = {
+            "caust": len(markers & set(caust_sel)),
+            "hvg": len(markers & set(hvg_sel)),
+            "max": len(in_pool),
+            "markers_in_pool": in_pool,
+        }
+
     if not write:
         return metrics
 
@@ -334,15 +363,26 @@ def _write_figures(
 
     figdir.mkdir(parents=True, exist_ok=True)
     n_top = metrics["n_top_genes"]
-    klass = np.array([_gene_class(n) for n in names])
     idx = np.arange(len(names))
     ev = metrics["held_out"]
+
+    # Synthetic genes are classed by their name prefix; real genes by whether
+    # they are a configured known marker (drawn last, so they sit on top).
+    marker_genes = {str(g) for g in cfg.evaluation.get("marker_genes") or []}
+    if marker_genes:
+        is_marker = np.isin(names.astype(str), sorted(marker_genes))
+        classes = [
+            (~is_marker, "#9ca3af", "other genes"),
+            (is_marker, "#2563eb", "known layer marker"),
+        ]
+    else:
+        klass = np.array([_gene_class(n) for n in names])
+        classes = [(klass == p, c, label) for p, c, label in GENE_CLASSES]
 
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
 
     ax = axes[0, 0]
-    for prefix, color, label in GENE_CLASSES:
-        m = klass == prefix
+    for m, color, label in classes:
         ax.scatter(idx[m], caust_score[m], s=18, c=color, label=label)
     ax.axhline(np.sort(caust_score)[-n_top], ls="--", c="k", lw=0.8)
     # Plain text rather than mathtext: matplotlib's mathtext parser pulls in a
@@ -355,24 +395,27 @@ def _write_figures(
     ax.legend(fontsize=7, loc="center right")
 
     ax = axes[0, 1]
-    for prefix, color, _ in GENE_CLASSES:
-        m = klass == prefix
+    for m, color, _ in classes:
         ax.scatter(idx[m], variance[m], s=18, c=color)
     ax.axhline(np.sort(variance)[-n_top], ls="--", c="k", lw=0.8)
     ax.set(title="B. Variance (HVG baseline)", xlabel="gene index", ylabel="variance")
 
     ax = axes[1, 0]
-    rec = metrics["causal_recovery"]
+    if "marker_recovery" in metrics:
+        rec = metrics["marker_recovery"]
+        title = f"C. Known layer markers kept (of {rec['max']} in pool)"
+        ylabel = f"markers in top-{n_top}"
+    else:
+        rec = metrics["causal_recovery"]
+        title = f"C. Causal gene recovery (max {rec['max']})"
+        ylabel = f"causal genes in top-{rec['max']}"
+    top = max(1, rec["max"])
     ax.bar(["HVG", "CauST"], [rec["hvg"], rec["caust"]], color=["#dc2626", "#2563eb"])
-    ax.set(
-        ylim=(0, rec["max"] * 1.18),
-        ylabel=f"causal genes in top-{rec['max']}",
-        title=f"C. Causal gene recovery (max {rec['max']})",
-    )
+    ax.set(ylim=(0, top * 1.18), ylabel=ylabel, title=title)
     for i, v in enumerate([rec["hvg"], rec["caust"]]):
         ax.text(
             i,
-            v + rec["max"] * 0.02,
+            v + top * 0.02,
             f"{v}/{rec['max']}",
             ha="center",
             fontweight="bold",
@@ -404,7 +447,9 @@ def _write_figures(
     plt.close(fig)
 
     coords = np.asarray(held.obsm["spatial"])
-    truth = np.asarray(held.obs["domain"]).astype(int)
+    # Labels may be arbitrary strings ("Layer3", "WM"); encode to 0..K-1. For
+    # synthetic string digits this is the identity, so colors are unchanged.
+    truth = np.unique(np.asarray(held.obs["domain"]), return_inverse=True)[1]
     panels = [
         ("ground truth", truth),
         (f"HVG (ARI {ev['hvg']['ari']:.3f})", match_labels(truth, labels["hvg"])),

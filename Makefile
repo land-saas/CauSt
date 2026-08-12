@@ -3,7 +3,7 @@
 # requires an activated virtualenv — uv keeps .venv in sync with uv.lock.
 .DEFAULT_GOAL := help
 
-.PHONY: help install install-dev lint format typecheck test cov demo benchmark repro verify determinism lock docs build clean check
+.PHONY: help install install-dev lint format typecheck test cov demo benchmark repro dlpfc verify determinism lock docs build clean check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -40,6 +40,9 @@ benchmark:  ## Run the CauST vs. HVG benchmark and regenerate the figures
 
 repro:  ## Run the headline experiment from its config into results/
 	uv run caust run -c configs/experiment/synthetic_holdout.yaml
+
+dlpfc:  ## Run the real-data DLPFC held-out-donor benchmark (fetches ~60 MB once)
+	uv run caust run -c configs/experiment/dlpfc_holdout.yaml --figures
 
 verify:  ## Re-run every recorded run and confirm the metrics still match
 	@found=0; status=0; \

@@ -163,3 +163,28 @@ def test_match_labels_only_permutes_colors():
     pred = np.array([2, 2, 0, 0, 1, 1])
     out = match_labels(true, pred)
     np.testing.assert_array_equal(out, true)
+
+
+def test_marker_recovery_is_config_gated(tmp_path):
+    # Without evaluation.marker_genes the metrics dict must not change shape,
+    # so recorded synthetic runs keep verifying byte-for-byte.
+    plain = run_experiment(cfg(), tmp_path / "plain", write=False)
+    assert "marker_recovery" not in plain
+
+    marked = run_experiment(
+        cfg(
+            evaluation={
+                "holdout": True,
+                "n_restarts": 2,
+                "marker_genes": ["CAUSAL_0", "CAUSAL_1", "NOT_A_GENE"],
+            }
+        ),
+        tmp_path / "marked",
+        write=False,
+    )
+    rec = marked["marker_recovery"]
+    # NOT_A_GENE is absent from the pool, so the denominator is 2.
+    assert rec["max"] == 2
+    assert rec["markers_in_pool"] == ["CAUSAL_0", "CAUSAL_1"]
+    assert 0 <= rec["hvg"] <= rec["max"]
+    assert 0 <= rec["caust"] <= rec["max"]

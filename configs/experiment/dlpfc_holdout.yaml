@@ -1,0 +1,41 @@
+# The headline claim on real tissue: spatialLIBD human DLPFC (Maynard et al.
+# 2021), one Visium slice per donor. Genes are selected on the first two donors
+# only; the third donor is never seen during selection and is what the reported
+# ARI is measured on. Data (~60 MB) is fetched to data.root on first run and
+# verified against checksums pinned in caust.dlpfc.
+name: dlpfc_holdout
+seed: 0
+threads: 1
+
+data:
+  source: dlpfc
+  root: data/DLPFC
+  # Two slices per training donor (Br5292, Br5595) so the cross-slice std in
+  # the invariance score is estimated from four slices, then held-out Br8100.
+  samples: [151507, 151508, 151669, 151670, 151673]
+  # Candidate pool: top genes by mean variance across the two training slices
+  # (min_spots_frac filters barely-expressed genes first). CauST re-ranks
+  # exactly the genes variance likes best, so the HVG baseline plays at home.
+  n_candidates: 2000
+  min_spots_frac: 0.05
+
+model:
+  backend: simple
+
+# lam and n_top_genes were chosen by sweeping on the training donors only
+# (mean ARI across the four training slices); the held-out donor was not
+# touched during tuning.
+selection:
+  n_top_genes: 25
+  lam: 1.0
+
+evaluation:
+  holdout: true
+  n_restarts: 5
+  # Canonical cortical layer markers from the spatialLIBD paper, used only for
+  # reporting (marker_recovery), never for selection. WM: MOBP/MBP/PLP1/CNP;
+  # L1: AQP4/RELN; L2: HPCAL1/LAMP5; L2-4: CUX2/CARTPT/RORB; L5: PCP4/TRABD2A/
+  # FEZF2; L6: KRT17/NTNG2.
+  marker_genes:
+    [MOBP, MBP, PLP1, CNP, AQP4, RELN, HPCAL1, LAMP5, CUX2, CARTPT, RORB,
+     PCP4, TRABD2A, FEZF2, KRT17, NTNG2]

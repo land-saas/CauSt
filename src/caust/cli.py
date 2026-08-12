@@ -83,14 +83,25 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"error: {exc}")
         return 2
 
-    rec = metrics["causal_recovery"]
-    print(f"\ncausal genes recovered (top-{rec['max']}):")
+    if "marker_recovery" in metrics:
+        rec = metrics["marker_recovery"]
+        n_top = metrics["n_top_genes"]
+        print(
+            f"\nknown layer markers kept in the top-{n_top} "
+            f"(of {rec['max']} in pool):"
+        )
+    else:
+        rec = metrics["causal_recovery"]
+        print(f"\ncausal genes recovered (top-{rec['max']}):")
     print(f"  HVG    {rec['hvg']}/{rec['max']}")
     print(f"  CauST  {rec['caust']}/{rec['max']}")
     print("\nheld-out donor:")
     for arm in ("all_genes", "hvg", "caust"):
         res = metrics["held_out"][arm]
-        print(f"  ARI  {arm:<10s} ({res['n_genes']:>3d} genes)  {res['ari']:.3f}")
+        print(
+            f"  ARI  {arm:<10s} ({res['n_genes']:>4d} genes)  "
+            f"{res['ari']:.3f} +/- {res['ari_std']:.3f}"
+        )
     print(f"\nartifacts written to {rundir}")
     return 0
 
