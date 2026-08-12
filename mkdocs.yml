@@ -26,6 +26,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Demo: demo.md
   - Usage: usage.md
   - Methods: methods.md
   - API reference: api.md
