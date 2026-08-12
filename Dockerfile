@@ -4,9 +4,9 @@
 #   docker run --rm -v "$PWD/results:/work/results" caust \
 #     caust run -c configs/experiment/synthetic_holdout.yaml
 #
-# Pinned to a digest-free but explicit base tag; bump deliberately, since the
-# base image is part of what makes a result reproducible.
-FROM python:3.11-slim-bookworm
+# The base tag pins the OS, interpreter, and uv version; uv.lock pins every
+# package. Both are part of what makes a result reproducible — bump deliberately.
+FROM ghcr.io/astral-sh/uv:0.12.0-python3.11-bookworm-slim
 
 # Pin the BLAS thread pool at the image level as well as in code. The library
 # calls threadpoolctl at runtime, but setting these keeps any subprocess or
@@ -18,21 +18,24 @@ ENV OMP_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1 \
     PYTHONHASHSEED=0 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    UV_NO_CACHE=1 \
+    UV_LINK_MODE=copy
 
 WORKDIR /work
 
-# Dependencies first so edits to the source do not invalidate this layer.
-COPY requirements.lock ./
-RUN python -m pip install --upgrade pip \
-    && python -m pip install -r requirements.lock
+# Locked runtime dependencies first, so edits to the source do not invalidate
+# this layer. --no-install-project defers the package itself to the next layer.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
-COPY pyproject.toml README.md LICENSE MANIFEST.in ./
+COPY README.md LICENSE MANIFEST.in ./
 COPY src/ ./src/
 COPY configs/ ./configs/
 COPY tests/ ./tests/
 COPY scripts/ ./scripts/
 
-RUN python -m pip install --no-deps .
+RUN uv sync --locked --no-dev --no-editable
+
+ENV PATH="/work/.venv/bin:$PATH"
 
 CMD ["caust", "run", "-c", "configs/experiment/synthetic_holdout.yaml"]

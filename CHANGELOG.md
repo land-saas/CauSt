@@ -22,6 +22,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the artifacts are byte-identical.
 
 ### Changed
+- **The project is now managed with [uv](https://docs.astral.sh/uv/).** A
+  committed `uv.lock` universally pins every dependency (all platforms and
+  Python versions); dev/docs tooling moved from extras to PEP 735 dependency
+  groups; the Makefile, CI, and Dockerfile all run through `uv sync --locked` /
+  `uv run`, so the same lockfile backs local development, CI, and the hermetic
+  Docker image. `requirements.txt` and `requirements.lock` are gone —
+  `uv.lock` is the single source of truth (`uv export` can regenerate a
+  requirements-style file if ever needed).
 - **Held-out ARI is now averaged over five clustering restarts.** The Gaussian
   mixture converges to a seed-dependent local optimum, and the HVG gene set is
   far more sensitive to that than the CauST set. The previously reported HVG ARI

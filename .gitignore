@@ -44,9 +44,8 @@ data/
 results/*
 !results/.gitkeep
 
-# Scratch dirs created by `make determinism` and `make lock`.
+# Scratch dir created by `make determinism`.
 .determinism/
-.lockenv/
 *.h5ad
 *.zarr
 

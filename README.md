@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/land-saas/CauSt/actions/workflows/ci.yml/badge.svg)](https://github.com/land-saas/CauSt/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A599%25-brightgreen.svg)](#development)
 [![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue.svg)](https://mypy-lang.org)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -45,7 +46,7 @@ falls into. Genes are selected on the training donors only and evaluated on a
 **held-out donor**, which is the actual robustness claim.
 
 ```
-$ caust run -c configs/experiment/synthetic_holdout.yaml
+$ uv run caust run -c configs/experiment/synthetic_holdout.yaml
 
 Causal genes recovered in the top-8:
   HVG    1/8
@@ -86,11 +87,21 @@ make determinism    # prove two separate processes produce byte-identical output
 
 ## Install
 
+The project is managed with [uv](https://docs.astral.sh/uv/). One command
+creates `.venv` from the committed `uv.lock` — the package plus all dev
+tooling, on the pinned interpreter:
+
+```bash
+uv sync
+```
+
+Prefix any command with `uv run` (no manual venv activation needed), or use
+the `make` targets below. Installing with pip also works for the runtime
+package:
+
 ```bash
 pip install -e .          # core (numpy / scipy / scikit-learn / anndata)
 pip install -e ".[viz]"   # + matplotlib, for the benchmark figures
-pip install -e ".[dev]"   # + test, lint, type-check tooling
-pip install -e ".[docs]"  # + documentation tooling
 ```
 
 ## Quick start
@@ -110,10 +121,13 @@ cs.transform(cohort[0], 8)  # AnnData subset to the causal gene set
 Or run the demo:
 
 ```bash
-python scripts/demo.py
-# or, after install:
-caust demo --slices 3 --lam 2.0
+uv run scripts/demo.py
+# or, via the console script:
+uv run caust demo --slices 3 --lam 2.0
 ```
+
+See [`docs/demo.md`](https://github.com/land-saas/CauSt/blob/main/docs/demo.md)
+for a guided five-minute tour of the whole project.
 
 ## Using your own data
 
@@ -142,7 +156,7 @@ src/caust/
 ## Development
 
 ```bash
-make install-dev   # editable install + dev/docs extras + pre-commit hooks
+make install-dev   # uv sync (+ docs group) + pre-commit hooks
 make check         # ruff + mypy + pytest with coverage (fails under 90%)
 make format        # auto-format with ruff --fix and black
 make docs          # build the MkDocs site

@@ -20,8 +20,8 @@ configs/*.yaml ──▶ caust run ──▶ results/<name>-<digest>/ ──▶ 
    and fails if the metrics have moved.
 
 ```bash
-make repro                                    # run the headline experiment
-caust verify results/synthetic_holdout-*/     # prove it still reproduces
+make repro                                           # run the headline experiment
+uv run caust verify results/synthetic_holdout-*/     # prove it still reproduces
 ```
 
 ## What is controlled
@@ -30,7 +30,7 @@ caust verify results/synthetic_holdout-*/     # prove it still reproduces
 |---|---|---|
 | Random number generation | `seed` in the config, applied via `caust.repro.set_global_seeds` to `random`, numpy, and torch | `manifest.json → provenance.seed` |
 | BLAS thread count | `threads` in the config, applied at runtime with `threadpoolctl` | `manifest.json → provenance.blas` |
-| Package versions | `requirements.lock`, or the Docker image | `manifest.json → provenance.packages` |
+| Package versions | `uv.lock` (universal lockfile, enforced with `uv sync --locked`), or the Docker image | `manifest.json → provenance.packages` |
 | Code version | git commit, plus a dirty-tree flag | `manifest.json → provenance.git` |
 | Platform / interpreter | recorded, not fixed | `manifest.json → provenance.platform`, `.python` |
 | Experiment settings | the config file itself | `config.resolved.yaml`, hashed into the run id |
@@ -72,9 +72,8 @@ accumulates instead of silently overwriting.
 
 ```bash
 git checkout <commit from manifest.json → provenance.git.commit>
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.lock && pip install --no-deps -e .
-caust verify results/<run_id>/
+uv sync --frozen --no-dev     # exactly the uv.lock committed at that point
+uv run caust verify results/<run_id>/
 ```
 
 Or hermetically, which also pins the OS and interpreter:
@@ -104,7 +103,7 @@ directory:
 
 ```bash
 for lam in 0 0.5 1 2 4; do
-  caust run -c configs/experiment/lambda_sweep.yaml --set selection.lam=$lam
+  uv run caust run -c configs/experiment/lambda_sweep.yaml --set selection.lam=$lam
 done
 ```
 
@@ -121,9 +120,10 @@ of quietly adding a setting nothing reads.
 
 ## Known limits
 
-- The lockfile is resolved for one platform. On a different OS or Python version
-  pip may legitimately pick different wheels; use the Docker image when that
-  matters.
+- `uv.lock` pins the same package *versions* on every platform and Python
+  version, but the installed *wheels* still differ per OS/architecture, and so
+  can their BLAS kernels. Version-level reproduction works anywhere; when
+  byte-level identity across machines matters, use the Docker image.
 - `PYTHONHASHSEED` cannot be set after the interpreter starts, so it is recorded
   rather than enforced. Nothing in CauST currently depends on hash ordering; the
   Docker image sets it anyway.

@@ -2,7 +2,7 @@
 # unaffected). setuptools' default sdist manifest only globs `test*.py`, so
 # tests/conftest.py -- and everything below -- must be listed explicitly.
 include CHANGELOG.md CITATION.cff CONTRIBUTING.md REPRODUCIBILITY.md
-include Makefile requirements.txt requirements.lock mkdocs.yml
+include Makefile mkdocs.yml uv.lock .python-version
 include .pre-commit-config.yaml Dockerfile
 recursive-include tests *.py
 recursive-include scripts *.py

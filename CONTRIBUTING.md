@@ -5,15 +5,21 @@ workflow and the quality gates the project enforces.
 
 ## Development setup
 
+The project is managed with [uv](https://docs.astral.sh/uv/)
+([install instructions](https://docs.astral.sh/uv/getting-started/installation/)).
+
 ```bash
 git clone https://github.com/land-saas/CauSt.git
 cd CauSt
-python -m venv venv && source venv/bin/activate
-make install-dev      # editable install + dev/docs extras + pre-commit hooks
+make install-dev      # uv sync (+ docs group) + pre-commit hooks
 ```
 
-`make install-dev` installs the package with the `dev` and `docs` extras and
-registers the pre-commit hooks so formatting and linting run on every commit.
+`uv sync` creates `.venv` from the committed `uv.lock` on the interpreter
+pinned in `.python-version` — an editable install of the package plus the
+`dev` dependency group. There is no venv to activate manually: every `make`
+target runs through `uv run`, which keeps the environment in sync with the
+lockfile. If you change dependencies in `pyproject.toml`, run `make lock` and
+commit the updated `uv.lock` (CI installs with `--locked` and fails on drift).
 
 ## Quality gates
 
