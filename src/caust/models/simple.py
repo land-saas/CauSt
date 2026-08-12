@@ -48,6 +48,7 @@ class SimpleSpatialModel(BaseSpatialModel):
         self._std: np.ndarray | None = None
         self._W: np.ndarray | None = None
         self._A_norm: sp.csr_matrix | None = None
+        self._Z: np.ndarray | None = None
 
     def fit(self, adata: AnnData) -> SimpleSpatialModel:
         if CONN_KEY not in adata.obsp:
@@ -70,6 +71,7 @@ class SimpleSpatialModel(BaseSpatialModel):
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             pca.fit(Xc)
         self._W = pca.components_.T  # (G x d)
+        self._Z = None  # invalidate any embedding cached by a previous fit
         return self
 
     def _check_fitted(self) -> None:
@@ -92,6 +94,32 @@ class SimpleSpatialModel(BaseSpatialModel):
         self._check_fitted()
         X = self._get_expression() if adata is None else _dense(adata.X)
         return self.forward(X)
+
+    def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
+        """Knockout embedding via a rank-1 update instead of a full forward pass.
+
+        Zeroing gene g changes exactly one column of the standardized input, by
+        x_g / sigma_g, and every later step (projection, smoothing) is linear.
+        The knocked-out embedding is therefore the base embedding minus a
+        smoothed outer product -- O(N*d) per gene instead of O(N*G*d), which is
+        what makes scoring thousands of real genes take seconds, not minutes.
+        """
+        self._check_fitted()
+        assert self._X is not None and self._std is not None and self._W is not None
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            col = self._X[:, gene_idx] / self._std[gene_idx]
+            shift = np.outer(col, self._W[gene_idx])
+            for _ in range(self.smooth_iters):
+                shift = self._A_norm @ shift
+            embedding: np.ndarray = self._base_embedding() - shift
+        return embedding
+
+    def _base_embedding(self) -> np.ndarray:
+        """Embedding of the training matrix, computed once and reused across
+        the per-gene knockout loop."""
+        if self._Z is None:
+            self._Z = self.forward(self._get_expression())
+        return self._Z
 
     def _get_expression(self) -> np.ndarray:
         self._check_fitted()

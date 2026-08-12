@@ -30,6 +30,19 @@ def test_knockout_embedding_differs_from_base(slice_small):
     assert not np.allclose(base, ko)
 
 
+def test_rank1_knockout_matches_naive_forward(slice_small):
+    # The simple model's rank-1 shortcut must agree with the generic
+    # zero-the-column-and-rerun path it replaces.
+    from caust.models.base import BaseSpatialModel
+
+    m = SimpleSpatialModel(n_components=10).fit(slice_small)
+    for gene in ("CAUSAL_0", "NOISE_5", "DONORNOISE_3"):
+        idx = slice_small.var_names.get_loc(gene)
+        fast = m.get_knockout_embedding(idx)
+        naive = BaseSpatialModel.get_knockout_embedding(m, idx)
+        np.testing.assert_allclose(fast, naive, atol=1e-10)
+
+
 def test_stagate_adapter_is_a_stub(slice_small):
     adapter = STAGATEAdapter()
     with pytest.raises(NotImplementedError):
