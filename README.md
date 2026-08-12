@@ -85,6 +85,30 @@ make verify         # re-run every recorded result and confirm it still matches
 make determinism    # prove two separate processes produce byte-identical output
 ```
 
+## The same claim on real tissue
+
+The synthetic trap is engineered; the DLPFC benchmark is not. `make dlpfc`
+fetches five Visium slices of human dorsolateral prefrontal cortex from the
+spatialLIBD dataset (three donors, manual cortical-layer annotations; ~60 MB,
+cached and checksum-verified), selects genes on the two training donors, and
+evaluates on the third donor — which the selection never saw:
+
+```
+$ uv run caust run -c configs/experiment/dlpfc_holdout.yaml --figures
+
+held-out donor:
+  ARI  all_genes  (2000 genes)  0.378 +/- 0.026
+  ARI  hvg        (  25 genes)  0.351 +/- 0.034
+  ARI  caust      (  25 genes)  0.459 +/- 0.069
+```
+
+Twenty-five CauST-selected genes beat both the variance baseline at the same
+budget (+0.11 ARI) and the full 2,000-gene candidate pool on the unseen donor.
+The knobs (lambda, gene budget) were tuned on the training donors only — the
+held-out donor was evaluated exactly once.
+
+![Spatial domains on the held-out DLPFC donor](https://raw.githubusercontent.com/land-saas/CauSt/main/docs/figures/dlpfc_domains.png)
+
 ## Install
 
 The project is managed with [uv](https://docs.astral.sh/uv/). One command

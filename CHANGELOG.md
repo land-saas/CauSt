@@ -21,6 +21,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A CI job that runs the same config in two separate processes and fails unless
   the artifacts are byte-identical.
 
+### Added
+- **Real-data support: the spatialLIBD DLPFC cohort.** `caust.dlpfc` fetches
+  10x Visium slices of human cortex (counts + manual layer annotations) with
+  pinned SHA-256 checksums and a scanpy-free 10x HDF5 reader, and
+  `configs/experiment/dlpfc_holdout.yaml` (or `make dlpfc`) runs the headline
+  claim on real tissue: genes selected on two donors, evaluated once on a
+  held-out third donor. 25 CauST genes reach ARI 0.459 ± 0.069 on the unseen
+  donor vs 0.351 ± 0.034 for the HVG baseline at the same budget and
+  0.378 ± 0.026 for the full 2,000-gene pool. Configs may list known marker
+  genes (`evaluation.marker_genes`) to report marker recovery alongside.
+- **Rank-1 knockout scoring in the reference backbone.** Zeroing one gene
+  shifts one standardized input column, and the rest of the model is linear,
+  so each knockout embedding is the base embedding minus a smoothed rank-1
+  update — O(N·d) per gene instead of O(N·G·d). Scoring 2,000 real genes
+  across five slices takes seconds. (Recorded results re-verify after
+  regeneration; low-order float bits differ from the old full-forward path.)
+
 ### Changed
 - **The project is now managed with [uv](https://docs.astral.sh/uv/).** A
   committed `uv.lock` universally pins every dependency (all platforms and

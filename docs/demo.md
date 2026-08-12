@@ -1,7 +1,8 @@
 # Five-minute demo
 
 A guided tour of CauST that runs end-to-end from a fresh clone. Total compute
-time is under two minutes on a laptop; the only prerequisite is
+time is under two minutes on a laptop (plus a one-time ~60 MB data download for
+the real-tissue section); the only prerequisite is
 [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 Every command below is copy-pasteable from the repository root.
@@ -80,7 +81,52 @@ while variance ranks the donor-specific noise genes highest.
 
 ![Spatial domains on the held-out donor](figures/domains.png)
 
-## 4. Every number is reproducible
+## 4. The same claim on real tissue
+
+The synthetic trap is engineered, so the honest question is whether the story
+survives contact with real data:
+
+```bash
+uv run caust run -c configs/experiment/dlpfc_holdout.yaml --figures
+```
+
+The first run fetches five 10x Visium slices of human dorsolateral prefrontal
+cortex from the spatialLIBD DLPFC dataset (~60 MB, cached under `data/DLPFC/`
+and verified against SHA-256 checksums pinned in the package). Three donors,
+manual cortical-layer annotations (L1–L6 + white matter). Genes are selected
+using the two training donors only; the third donor is evaluated exactly once,
+and the tuning knobs (lambda, gene budget) were chosen by sweeping on the
+training donors alone.
+
+```text
+known layer markers kept in the top-25 (of 8 in pool):
+  HVG    2/8
+  CauST  1/8
+
+held-out donor:
+  ARI  all_genes  (2000 genes)  0.378 +/- 0.026
+  ARI  hvg        (  25 genes)  0.351 +/- 0.034
+  ARI  caust      (  25 genes)  0.459 +/- 0.069
+```
+
+Twenty-five CauST-selected genes beat the variance baseline at the same budget
+by +0.11 ARI on a donor the selection never saw — and beat the full 2,000-gene
+candidate pool. The selected set is biologically legible, too: it includes MBP
+(myelin / white matter), CLU and SPARCL1 (astrocytic genes with laminar
+expression), and NRGN (neurogranin), alongside metabolic and ribosomal genes
+whose laminar gradients happen to be donor-stable. It is *not* dominated by the
+textbook marker panel (the marker count above is reported, not hidden) — CauST
+optimizes for cross-donor predictive stability, not for matching a curated
+list.
+
+![Spatial domains on the held-out DLPFC donor](figures/dlpfc_domains.png)
+
+The run takes about ten seconds once the data is cached. That speed is not
+free: scoring a knockout for each of 2,000 genes across five slices is cheap
+because the reference backbone computes each knockout as a rank-1 update to the
+base embedding instead of a fresh forward pass.
+
+## 5. Every number is reproducible
 
 Each run writes a content-addressed directory under `results/` with the
 resolved config, the metrics, and a provenance manifest (git commit, package
@@ -88,10 +134,12 @@ versions, platform, seed, BLAS thread counts, artifact checksums).
 
 ```bash
 uv run caust verify results/synthetic_holdout-*/
+uv run caust verify results/dlpfc_holdout-*/
 ```
 
 ```text
 REPRODUCED: results/synthetic_holdout-0759a2e2cbad matches a fresh run of its recorded config
+REPRODUCED: results/dlpfc_holdout-bdf4a4109c47 matches a fresh run of its recorded config
 ```
 
 And determinism is not an accident — two separate processes produce
@@ -108,20 +156,22 @@ OK: artifacts are byte-identical across processes
 See [REPRODUCIBILITY.md](https://github.com/land-saas/CauSt/blob/main/REPRODUCIBILITY.md)
 for what is controlled and how.
 
-## 5. Quality gates
+## 6. Quality gates
 
 ```bash
 make check
 ```
 
-Runs ruff, mypy, and the 85-test suite with a 90% coverage gate (currently
-~97%), through the same locked environment. CI additionally proves the built
+Runs ruff, mypy, and the 98-test suite with a 90% coverage gate (currently
+~94%), through the same locked environment. CI additionally proves the built
 sdist/wheel install and test cleanly on Python 3.9–3.12.
 
 ## What you just saw
 
 - **A causal claim, tested honestly** — gene selection on training donors,
-  evaluation on a held-out donor, against the standard HVG baseline.
+  evaluation on a held-out donor, against the standard HVG baseline; first on
+  a synthetic cohort built to embarrass variance-based selection, then on real
+  human cortex where nothing was engineered to cooperate.
 - **One lockfile everywhere** — `uv.lock` backs local dev, CI, and Docker;
   `uv sync` rebuilds the exact environment on any machine.
 - **Provenance by default** — every result carries the config, seed, and
