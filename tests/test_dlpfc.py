@@ -59,9 +59,7 @@ def dlpfc_root(tmp_path, monkeypatch):
         counts[5] = 0  # RARE: never expressed in any slice
         if sample == "151673":
             counts[4] = rng.poisson(80.0, size=8)  # GAMMA: loud only held-out
-        write_fake_10x(
-            sampledir / dlpfc.H5_NAME, counts, gene_ids, symbols, barcodes
-        )
+        write_fake_10x(sampledir / dlpfc.H5_NAME, counts, gene_ids, symbols, barcodes)
         layers = ["Layer1", "Layer2", "Layer3", "WM", "Layer1", "Layer2", "", "WM"]
         write_fake_metadata(sampledir / dlpfc.META_NAME, barcodes, layers)
     return tmp_path
@@ -129,9 +127,7 @@ def test_unknown_sample_raises(dlpfc_root):
 
 
 def test_checksum_mismatch_raises(dlpfc_root, monkeypatch):
-    monkeypatch.setattr(
-        dlpfc, "CHECKSUMS", {f"151507/{dlpfc.H5_NAME}": "0" * 64}
-    )
+    monkeypatch.setattr(dlpfc, "CHECKSUMS", {f"151507/{dlpfc.H5_NAME}": "0" * 64})
     with pytest.raises(DLPFCError, match="checksum mismatch"):
         fetch_dlpfc_sample("151507", dlpfc_root, download=False)
 
