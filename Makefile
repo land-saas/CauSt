@@ -16,8 +16,9 @@ install-dev:  ## uv sync with the docs group, plus pre-commit hooks
 	uv sync --group docs
 	uv run pre-commit install
 
-lint:  ## Run ruff linter
+lint:  ## Run ruff linter and black --check (same gate as CI)
 	uv run ruff check src tests scripts
+	uv run black --check src tests scripts
 
 format:  ## Auto-format with black and ruff --fix
 	uv run ruff check --fix src tests scripts
