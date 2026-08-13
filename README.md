@@ -5,7 +5,7 @@
 [![CI](https://github.com/land-saas/CauSt/actions/workflows/ci.yml/badge.svg)](https://github.com/land-saas/CauSt/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A599%25-brightgreen.svg)](#development)
+[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A594%25-brightgreen.svg)](#development)
 [![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue.svg)](https://mypy-lang.org)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/land-saas/CauSt/blob/main/LICENSE)
