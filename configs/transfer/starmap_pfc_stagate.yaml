@@ -1,0 +1,23 @@
+# STARmap mouse PFC (Wang 2018; 4 BASS-annotated layers): three sections,
+# 166 genes; each section as source, zero-shot to the other two.
+name: starmap_pfc_transfer_stagate
+seed: 0
+threads: 1
+data:
+  source: starmap_pfc
+  n_hvg_rank: 166
+model:
+  backend: stagate
+  hidden_dim: 128
+  latent_dim: 30
+  n_epochs: 1000
+  device: auto
+selection:
+  lam: 2.0
+  n_hvg_pool: 166
+  k_values: [10, 20, 40, 80]
+  strategies: [hvg, hvg_donor, moran, random, highdelta, caust]
+evaluation:
+  seeds: [0, 1, 2, 3, 4]
+  cluster_method: eee
+  jaccard_n_top: 40

@@ -63,8 +63,26 @@ def build_cohort(cfg: ExperimentConfig) -> list[AnnData]:
             raise ExperimentError(f"invalid data: section -- {exc}") from None
         except DLPFCError as exc:
             raise ExperimentError(str(exc)) from None
+    from .datasets import DATASETS, DatasetError, load_dataset
+
+    if source in DATASETS:
+        try:
+            slices = load_dataset(
+                source,
+                spec.get("sections"),
+                spec.get("root"),
+                download=bool(spec.get("download", True)),
+            )
+        except DatasetError as exc:
+            raise ExperimentError(str(exc)) from None
+        from .dlpfc import _normalize_log1p
+
+        for a in slices:
+            _normalize_log1p(a, target_sum=float(spec.get("target_sum", 1e4)))
+        return slices
     raise ExperimentError(
-        f"unsupported data.source {source!r}; expected 'synthetic' or 'dlpfc'"
+        f"unsupported data.source {source!r}; expected synthetic, dlpfc, "
+        + ", ".join(DATASETS)
     )
 
 

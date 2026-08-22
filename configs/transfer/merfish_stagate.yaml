@@ -1,0 +1,25 @@
+# MERFISH hypothalamus (Moffitt 2018; 8 BASS-annotated regions): five
+# consecutive Bregma sections of one animal, each as source, zero-shot to the
+# others. 155 genes, so the knockout pool is the whole panel and the gene
+# budgets are small. "Cross-donor" here means cross-section (one animal).
+name: merfish_transfer_stagate
+seed: 0
+threads: 1
+data:
+  source: merfish
+  n_hvg_rank: 155
+model:
+  backend: stagate
+  hidden_dim: 128
+  latent_dim: 30
+  n_epochs: 1000
+  device: auto
+selection:
+  lam: 2.0
+  n_hvg_pool: 155
+  k_values: [10, 20, 40, 80]
+  strategies: [hvg, hvg_donor, moran, random, highdelta, caust]
+evaluation:
+  seeds: [0, 1, 2, 3, 4]
+  cluster_method: eee
+  jaccard_n_top: 40

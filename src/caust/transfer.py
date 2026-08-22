@@ -12,7 +12,16 @@ embedding is clustered against the manual annotations. Aggregating the
 
 Strategies (all at equal gene count):
 
-- ``hvg``        top-K highly variable genes of the *source* slice;
+- ``hvg``        top-K highly variable genes of the *source* slice (the
+                 standard pipeline);
+- ``hvg_donor``  donor-aware HVG: genes ranked by how many scoring slices
+                 call them highly variable (scanpy's ``batch_key`` rule, the
+                 simplest cross-donor-stability selector -- the baseline the
+                 invariance term has to beat);
+- ``moran``      top-K by Moran's I spatial autocorrelation averaged over the
+                 scoring slices (the best-performing SVG selector in recent
+                 benchmarks);
+- ``random``     K genes drawn at random from the pool (a control);
 - ``highdelta``  top-K by mean knockout effect (lambda = 0, no stability);
 - ``caust``      top-K by invariance score ``mean - lambda * std``.
 
@@ -42,7 +51,9 @@ from .invariance import invariance_scores, select_causal_genes
 from .pipeline import CauST
 from .repro import collect_provenance, deterministic, sha256_file
 
-STRATEGIES = ("hvg", "highdelta", "caust")
+STRATEGIES = ("hvg", "hvg_donor", "moran", "random", "highdelta", "caust")
+#: Strategies whose gene set is the same for every source slice.
+GLOBAL_STRATEGIES = ("hvg_donor", "moran", "highdelta", "caust")
 DEFAULT_K = (50, 100, 200, 400, 800, 1600, 3200)
 RESULTS_CSV = "results.csv"
 SUMMARY_JSON = "summary.json"
@@ -157,7 +168,27 @@ def load_transfer_cohort(cfg: ExperimentConfig) -> list[AnnData]:
         for a in slices:
             _normalize_log1p(a)
     else:
-        raise ExperimentError(f"unsupported data.source {source!r}")
+        from .datasets import DATASETS, DatasetError, load_dataset
+
+        if source not in DATASETS:
+            raise ExperimentError(
+                f"unsupported data.source {source!r}; expected synthetic, dlpfc, "
+                + ", ".join(DATASETS)
+            )
+        try:
+            slices = load_dataset(
+                source,
+                spec.get("sections"),
+                spec.get("root"),
+                download=bool(spec.get("download", True)),
+            )
+        except DatasetError as exc:
+            raise ExperimentError(str(exc)) from None
+        if DATASETS[source].counts_are_integers:
+            for a in slices:
+                a.layers["counts"] = a.X.copy()
+        for a in slices:
+            _normalize_log1p(a)
     for a in slices:
         a.var["hvg_rank"] = rank_hvg(
             a, n_hvg, counts_layer="counts" if "counts" in a.layers else None
@@ -230,6 +261,43 @@ def score_pool(
     return np.asarray(cs.common_genes_), np.asarray(cs.deltas_), np.asarray(cs.scores_)
 
 
+def morans_i(adata: AnnData, genes: Sequence[str], n_neighbors: int = 6) -> np.ndarray:
+    """Moran's I of each gene over the slice's spatial kNN graph."""
+    from .graph import CONN_KEY, build_spatial_graph
+
+    if CONN_KEY not in adata.obsp:
+        build_spatial_graph(adata, n_neighbors=n_neighbors)
+    W = sp.csr_matrix(adata.obsp[CONN_KEY], dtype=np.float64)
+    X = adata[:, list(genes)].X
+    X = np.asarray(X.todense() if sp.issparse(X) else X, dtype=np.float64)
+    Z = X - X.mean(axis=0)
+    num = np.einsum("ij,ij->j", Z, W @ Z)
+    den = np.einsum("ij,ij->j", Z, Z)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out: np.ndarray = (Z.shape[0] / W.sum()) * num / den
+    out[~np.isfinite(out)] = -np.inf
+    return out
+
+
+def baseline_scores(
+    slices: Sequence[AnnData], scoring: Sequence[int], names: np.ndarray, n_hvg: int
+) -> dict[str, np.ndarray]:
+    """Gene scores for the global baselines over the pool genes ``names``."""
+    pool = list(names)
+    # Donor-aware HVG: number of scoring slices in which the gene is within
+    # the top-n_hvg HVGs, tie-broken by mean rank (scanpy batch_key rule).
+    hits = np.zeros(len(pool))
+    mean_rank = np.zeros(len(pool))
+    for i in scoring:
+        r = slices[i].var.loc[pool, "hvg_rank"].to_numpy(dtype=float)
+        hits += r < n_hvg
+        mean_rank += r
+    mean_rank /= len(scoring)
+    hvg_donor = hits * 1e6 - mean_rank
+    moran = np.mean([morans_i(slices[i], pool) for i in scoring], axis=0)
+    return {"hvg_donor": hvg_donor, "moran": moran}
+
+
 def gene_set(
     strategy: str,
     k: int,
@@ -237,14 +305,24 @@ def gene_set(
     names: np.ndarray,
     deltas: np.ndarray,
     lam: float,
+    baselines: dict[str, np.ndarray] | None = None,
+    rng: np.random.Generator | None = None,
 ) -> list[str]:
     if strategy == "hvg":
         order = np.argsort(source.var["hvg_rank"].to_numpy(), kind="stable")
         return [str(g) for g in source.var_names[order[:k]]]
+    if strategy == "random":
+        gen = rng if rng is not None else np.random.default_rng(0)
+        pick = gen.choice(len(names), size=min(k, len(names)), replace=False)
+        return [str(g) for g in names[np.sort(pick)]]
     if strategy == "highdelta":
         scores = invariance_scores(deltas, lam=0.0)
     elif strategy == "caust":
         scores = invariance_scores(deltas, lam=lam)
+    elif strategy in ("hvg_donor", "moran"):
+        if baselines is None or strategy not in baselines:
+            raise ExperimentError(f"baseline scores for {strategy!r} not computed")
+        scores = np.asarray(baselines[strategy], dtype=float)
     else:
         raise ExperimentError(
             f"unknown strategy {strategy!r}; expected one of {STRATEGIES}"
@@ -316,6 +394,12 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         pair.setdefault(
             (r["strategy"], int(r["k"]), r["source"], r["target"]), []
         ).append(float(r["ari"]))
+    nmi_by: dict[tuple[str, int, str], list[float]] = {}
+    for r in rows:
+        if "nmi" in r:
+            nmi_by.setdefault((r["strategy"], int(r["k"]), _split(r)), []).append(
+                float(r["nmi"])
+            )
     strategies = sorted({s for s, _, _ in by})
     ks = sorted({k for _, k, _ in by})
     table: dict[str, Any] = {}
@@ -330,6 +414,9 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
                         "std": float(np.std(v)),
                         "n": len(v),
                     }
+                    nv = nmi_by.get((s, k, split))
+                    if nv:
+                        entry[split]["nmi"] = float(np.mean(nv))
             if "within_slice" in entry and "cross_donor" in entry:
                 entry["generalization_gap"] = (
                     entry["within_slice"]["mean"] - entry["cross_donor"]["mean"]
@@ -360,7 +447,59 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "k_values": ks,
         "table": table,
         "caust_vs_hvg_wins": wins,
+        "paired_tests": paired_tests(pair, strategies, ks, rows),
     }
+
+
+def paired_tests(
+    pair: dict[tuple[str, int, str, str], list[float]],
+    strategies: Sequence[str],
+    ks: Sequence[int],
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Wilcoxon signed-rank test of CauST against every other strategy.
+
+    Pairs are (source, target) cells with the seed-averaged ARI; cross-donor
+    pairs and within-slice pairs are tested separately. Consecutive sections
+    from one donor are near-replicates, so cross-donor is the honest test.
+    """
+    from scipy.stats import wilcoxon
+
+    if "caust" not in strategies:
+        return {}
+    donors = {r["source"]: r["source_donor"] for r in rows}
+    out: dict[str, Any] = {}
+    for k in ks:
+        out[str(k)] = {}
+        for other in strategies:
+            if other == "caust":
+                continue
+            res: dict[str, Any] = {}
+            for split in ("within_slice", "cross_donor"):
+                a, b = [], []
+                for (s, kk, src, tgt), v in pair.items():
+                    if s != "caust" or kk != k or ("caust", k, src, tgt) not in pair:
+                        continue
+                    if (other, k, src, tgt) not in pair:
+                        continue
+                    is_within = src == tgt
+                    is_cross = donors[src] != donors[tgt]
+                    if (split == "within_slice" and is_within) or (
+                        split == "cross_donor" and is_cross
+                    ):
+                        a.append(float(np.mean(v)))
+                        b.append(float(np.mean(pair[(other, k, src, tgt)])))
+                if len(a) >= 2 and np.any(np.subtract(a, b) != 0):
+                    p = float(wilcoxon(a, b).pvalue)
+                else:
+                    p = float("nan")
+                res[split] = {
+                    "mean_diff": float(np.mean(a) - np.mean(b)) if a else float("nan"),
+                    "p_value": p,
+                    "n_pairs": len(a),
+                }
+            out[str(k)][other] = res
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -464,6 +603,11 @@ def run_transfer(
                 )
         _write_gene_scores(outdir / GENES_CSV, names, deltas, lam)
 
+        baselines = (
+            baseline_scores(slices, scoring, names, n_hvg_pool)
+            if any(st in ("hvg_donor", "moran") for st in strategies)
+            else {}
+        )
         factory = _model_factory(cfg, random_state=cfg.seed)
         total = len(strategies) * len(ks) * len(slices)
         n_done = 0
@@ -475,7 +619,16 @@ def run_transfer(
                     if key in done:
                         continue
                     t0 = time.time()
-                    genes = gene_set(strategy, k, source, names, deltas, lam)
+                    genes = gene_set(
+                        strategy,
+                        k,
+                        source,
+                        names,
+                        deltas,
+                        lam,
+                        baselines,
+                        np.random.default_rng(cfg.seed + 1000 * k + src_idx),
+                    )
                     rows = run_cell(
                         strategy,
                         k,

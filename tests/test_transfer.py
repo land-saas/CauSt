@@ -131,3 +131,55 @@ def test_cli_transfer(tmp_path, capsys):
 
 def test_cli_transfer_bad_config(tmp_path, capsys):
     assert main(["transfer", "-c", str(tmp_path / "missing.yaml")]) == 2
+
+
+def test_baseline_strategies_and_paired_tests(tmp_path):
+    from caust.transfer import baseline_scores, gene_set, morans_i
+
+    cfg = load_config(
+        SMOKE,
+        [
+            "selection.strategies=[hvg, hvg_donor, moran, random, caust]",
+            "selection.k_values=[4]",
+        ],
+    )
+    summary = run_transfer(cfg, tmp_path, figures=False, verbose=False)
+    assert set(summary["strategies"]) == {
+        "hvg",
+        "hvg_donor",
+        "moran",
+        "random",
+        "caust",
+    }
+    tests = summary["paired_tests"]["4"]
+    assert set(tests) == {"hvg", "hvg_donor", "moran", "random"}
+    assert tests["hvg"]["cross_donor"]["n_pairs"] == 6
+    assert "nmi" in summary["table"]["caust"]["4"]["cross_donor"]
+
+    slices = load_transfer_cohort(cfg)
+    names = np.asarray(slices[0].var_names)
+    base = baseline_scores(slices, [0, 1], names, n_hvg=10)
+    assert set(base) == {"hvg_donor", "moran"} and base["moran"].shape == names.shape
+    # Planted causal genes are spatially patterned: Moran's I ranks them first.
+    top = gene_set("moran", 4, slices[0], names, np.zeros((2, len(names))), 1.0, base)
+    assert all(g.startswith("CAUSAL") for g in top)
+    r1 = gene_set(
+        "random",
+        4,
+        slices[0],
+        names,
+        np.zeros((2, len(names))),
+        1.0,
+        rng=np.random.default_rng(1),
+    )
+    r2 = gene_set(
+        "random",
+        4,
+        slices[0],
+        names,
+        np.zeros((2, len(names))),
+        1.0,
+        rng=np.random.default_rng(1),
+    )
+    assert r1 == r2 and len(r1) == 4
+    assert morans_i(slices[0], names[:3]).shape == (3,)

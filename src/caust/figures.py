@@ -19,8 +19,22 @@ DLPFC_LAYER_MARKERS = (
     "SNAP25", "NRGN", "CCK", "CALM1", "GPM6A", "ENC1", "NEFL", "NEFM",
 )  # fmt: skip
 
-COLORS = {"hvg": "#dc2626", "highdelta": "#2563eb", "caust": "#16a34a"}
-LABELS = {"hvg": "HVG", "highdelta": "High-δ", "caust": "CauST"}
+COLORS = {
+    "hvg": "#dc2626",
+    "hvg_donor": "#f97316",
+    "moran": "#a855f7",
+    "random": "#9ca3af",
+    "highdelta": "#2563eb",
+    "caust": "#16a34a",
+}
+LABELS = {
+    "hvg": "HVG",
+    "hvg_donor": "Donor-aware HVG",
+    "moran": "Moran's I",
+    "random": "Random",
+    "highdelta": "High-δ",
+    "caust": "CauST",
+}
 
 
 def _plt() -> Any:
@@ -51,7 +65,7 @@ def transfer_figures(
     written = []
     table = summary["table"]
     ks = summary["k_values"]
-    strategies = [s for s in ("hvg", "caust", "highdelta") if s in table]
+    strategies = [s for s in COLORS if s in table]
 
     # 1. ARI vs K, three evaluation settings.
     fig, axes = plt.subplots(1, 3, figsize=(14, 4), sharey=True)
