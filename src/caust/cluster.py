@@ -11,7 +11,6 @@ import numpy as np
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.mixture import GaussianMixture
 
-
 #: Clustering back-ends. ``"eee"`` is the Python equivalent of mclust's EEE
 #: model (equal volume, shape and orientation = one shared full covariance),
 #: which STAGATE and the CauST proposal use; ``"full"`` is the per-component

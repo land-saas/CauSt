@@ -133,7 +133,9 @@ def _evaluate(
 
     sub = adata[:, keep].copy()
     model = (
-        SimpleSpatialModel(random_state=seed) if model_factory is None else model_factory()
+        SimpleSpatialModel(random_state=seed)
+        if model_factory is None
+        else model_factory()
     ).fit(sub)
     embedding = model.get_embedding()
     truth = adata.obs["domain"]
@@ -142,7 +144,10 @@ def _evaluate(
     first_pred = None
     for r in range(n_restarts):
         pred = cluster_embedding(
-            embedding, n_clusters=n_domains, random_state=seed + r, method=cluster_method
+            embedding,
+            n_clusters=n_domains,
+            random_state=seed + r,
+            method=cluster_method,
         )
         if first_pred is None:
             first_pred = pred
@@ -216,7 +221,13 @@ def run_experiment(
         eval_factory = _model_factory(cfg, random_state=cfg.seed)
         scored = {
             arm: _evaluate(
-                held, genes, n_domains, cfg.seed, n_restarts, eval_factory, cluster_method
+                held,
+                genes,
+                n_domains,
+                cfg.seed,
+                n_restarts,
+                eval_factory,
+                cluster_method,
             )
             for arm, genes in arms.items()
         }

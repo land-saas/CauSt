@@ -58,7 +58,13 @@ def test_parameters_are_frozen_after_fit(fitted):
 
 def test_seed_makes_training_deterministic_on_cpu():
     sl = make_synthetic_slice(grid=6, seed=1)
-    kw = dict(hidden_dim=8, latent_dim=3, n_epochs=10, device="cpu", random_state=7)
+    kw = {
+        "hidden_dim": 8,
+        "latent_dim": 3,
+        "n_epochs": 10,
+        "device": "cpu",
+        "random_state": 7,
+    }
     a = STAGATEModel(**kw).fit(sl).get_embedding()
     b = STAGATEModel(**kw).fit(sl).get_embedding()
     np.testing.assert_allclose(a, b)
