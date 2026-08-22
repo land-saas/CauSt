@@ -337,20 +337,22 @@ class STAGATEModel(BaseSpatialModel):
         out: np.ndarray = attribution.detach().cpu().numpy().astype(np.float64)
         return out
 
-    def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
+    def get_knockout_embedding(self, gene_idx: int, mode: str = "zero") -> np.ndarray:
         """Knockout forward pass with the expression matrix resident on-device.
 
-        The matrix is uploaded once and the gene column is zeroed in place and
-        restored afterwards, so each of the G knockouts costs one forward
+        The matrix is uploaded once and the gene column is replaced in place
+        and restored afterwards, so each of the G knockouts costs one forward
         pass rather than a host-to-device copy of the whole matrix.
         """
         self._check_fitted()
+        if mode not in self.KNOCKOUT_MODES:
+            raise ValueError(f"mode must be one of {self.KNOCKOUT_MODES}, got {mode!r}")
         if self._x_dev is None:
             self._x_dev = torch.as_tensor(self._X, device=self.device)
         x = self._x_dev
         with torch.no_grad():
             saved = x[:, gene_idx].clone()
-            x[:, gene_idx] = 0.0
+            x[:, gene_idx] = 0.0 if mode == "zero" else saved.mean()
             try:
                 z = self.net.encode(x, self._edge_index)
             finally:

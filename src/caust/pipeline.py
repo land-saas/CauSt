@@ -37,15 +37,20 @@ class CauST:
         Defaults to the bundled :class:`SimpleSpatialModel`.
     lam
         Invariance penalty lambda (Eq. 3). Paper's best setting is 2.0.
+    knockout_mode
+        ``"zero"`` (silence the gene, the paper's Eq. 1) or ``"mean"``
+        (replace it by its mean; an on-manifold ablation control).
     """
 
     def __init__(
         self,
         model_factory: Callable[[], BaseSpatialModel] = _default_model_factory,
         lam: float = 2.0,
+        knockout_mode: str = "zero",
     ):
         self.model_factory = model_factory
         self.lam = lam
+        self.knockout_mode = knockout_mode
         # populated by fit()
         self.common_genes_: np.ndarray | None = None
         self.deltas_: np.ndarray | None = None  # (E, G_common)
@@ -77,7 +82,9 @@ class CauST:
             self.models_.append(model)
             if verbose:
                 print(f"[slice {e + 1}/{len(adatas)}] knockout scoring...")
-            deltas.append(knockout_scores(model, verbose=verbose))
+            deltas.append(
+                knockout_scores(model, verbose=verbose, mode=self.knockout_mode)
+            )
 
         self.deltas_ = np.vstack(deltas)  # (E, G_common)
         self.scores_ = invariance_scores(self.deltas_, lam=self.lam)

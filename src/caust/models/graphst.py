@@ -258,14 +258,17 @@ class GraphSTModel(BaseSpatialModel):
         assert self._X is not None
         return self._X  # already scaled; forward() rescales raw input
 
-    def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
+    def get_knockout_embedding(self, gene_idx: int, mode: str = "zero") -> np.ndarray:
         """Rank-1 knockout: the model is linear in the scaled features."""
         self._check_fitted()
+        if mode not in self.KNOCKOUT_MODES:
+            raise ValueError(f"mode must be one of {self.KNOCKOUT_MODES}, got {mode!r}")
         assert self._X is not None and self.pca is not None
+        column = self._X[:, gene_idx : gene_idx + 1]
+        if mode == "mean":
+            column = column - column.mean()
         with torch.no_grad():
-            col = torch.as_tensor(
-                self._X[:, gene_idx : gene_idx + 1], device=self.device
-            )
+            col = torch.as_tensor(column, device=self.device)
             row = self.net.weight1[gene_idx : gene_idx + 1, :] @ self.net.weight2
             shift = self._adj @ (self._adj @ (col @ row))
         delta = shift.cpu().numpy() @ self.pca.components_.T

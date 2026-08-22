@@ -230,7 +230,11 @@ def run_experiment(
         held = cohort[-1]
         n_domains = int(cohort[0].obs["domain"].nunique())
 
-        cs = CauST(model_factory=_model_factory(cfg), lam=lam).fit(train)
+        cs = CauST(
+            model_factory=_model_factory(cfg),
+            lam=lam,
+            knockout_mode=str(cfg.selection.get("knockout_mode", "zero")),
+        ).fit(train)
         names = np.asarray(cs.common_genes_)
         caust_score = np.asarray(cs.scores_)
         variance = hvg_scores(train)

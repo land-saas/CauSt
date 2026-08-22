@@ -40,3 +40,25 @@ def test_rank1_knockout_matches_naive_forward(slice_small):
         fast = m.get_knockout_embedding(idx)
         naive = BaseSpatialModel.get_knockout_embedding(m, idx)
         np.testing.assert_allclose(fast, naive, atol=1e-10)
+
+
+def test_knockout_mode_mean_differs_from_zero_and_matches_generic(slice_small):
+    from caust.models.base import BaseSpatialModel
+
+    m = SimpleSpatialModel(n_components=10).fit(slice_small)
+    idx = slice_small.var_names.get_loc("CAUSAL_0")
+    zero = m.get_knockout_embedding(idx, "zero")
+    mean = m.get_knockout_embedding(idx, "mean")
+    assert not np.allclose(zero, mean)
+    np.testing.assert_allclose(
+        mean, BaseSpatialModel.get_knockout_embedding(m, idx, "mean"), atol=1e-10
+    )
+    with pytest.raises(ValueError, match="mode must be"):
+        m.get_knockout_embedding(idx, "permute")
+
+
+def test_pipeline_knockout_mode(cohort_small):
+    from caust.pipeline import CauST
+
+    cs = CauST(lam=1.0, knockout_mode="mean").fit(cohort_small)
+    assert set(cs.select_genes(8)) >= {"CAUSAL_0", "CAUSAL_1"}

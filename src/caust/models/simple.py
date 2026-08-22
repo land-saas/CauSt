@@ -101,19 +101,23 @@ class SimpleSpatialModel(BaseSpatialModel):
             build_spatial_graph(adata, n_neighbors=self.n_neighbors)
         return self.forward(_dense(adata.X), normalized_adjacency(adata.obsp[CONN_KEY]))
 
-    def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
+    def get_knockout_embedding(self, gene_idx: int, mode: str = "zero") -> np.ndarray:
         """Knockout embedding via a rank-1 update instead of a full forward pass.
 
-        Zeroing gene g changes exactly one column of the standardized input, by
-        x_g / sigma_g, and every later step (projection, smoothing) is linear.
+        Knocking out gene g changes exactly one column of the standardized
+        input -- by x_g / sigma_g when zeroed, by (x_g - mean_g) / sigma_g when
+        mean-imputed -- and every later step (projection, smoothing) is linear.
         The knocked-out embedding is therefore the base embedding minus a
         smoothed outer product -- O(N*d) per gene instead of O(N*G*d), which is
         what makes scoring thousands of real genes take seconds, not minutes.
         """
         self._check_fitted()
+        if mode not in self.KNOCKOUT_MODES:
+            raise ValueError(f"mode must be one of {self.KNOCKOUT_MODES}, got {mode!r}")
         assert self._X is not None and self._std is not None and self._W is not None
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-            col = self._X[:, gene_idx] / self._std[gene_idx]
+            removed = 0.0 if mode == "zero" else self._X[:, gene_idx].mean()
+            col = (self._X[:, gene_idx] - removed) / self._std[gene_idx]
             shift = np.outer(col, self._W[gene_idx])
             for _ in range(self.smooth_iters):
                 shift = self._A_norm @ shift

@@ -35,10 +35,17 @@ class BaseSpatialModel(ABC):
         CauST uses for in-silico knockouts: pass X with a gene column zeroed out.
         """
 
-    def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
-        """Embedding after zeroing out ``gene_idx`` (Eq. 1 in the paper)."""
+    #: Replacement values for a knocked-out gene: ``"zero"`` silences it (Eq. 1
+    #: of the proposal); ``"mean"`` replaces it by its own mean, which removes
+    #: the gene's information while keeping the input on the data manifold.
+    KNOCKOUT_MODES = ("zero", "mean")
+
+    def get_knockout_embedding(self, gene_idx: int, mode: str = "zero") -> np.ndarray:
+        """Embedding after knocking out ``gene_idx`` (Eq. 1 in the paper)."""
+        if mode not in self.KNOCKOUT_MODES:
+            raise ValueError(f"mode must be one of {self.KNOCKOUT_MODES}, got {mode!r}")
         X = self._get_expression().copy()
-        X[:, gene_idx] = 0.0
+        X[:, gene_idx] = 0.0 if mode == "zero" else X[:, gene_idx].mean()
         return self.forward(X)
 
     @abstractmethod

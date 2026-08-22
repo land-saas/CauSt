@@ -253,9 +253,10 @@ def score_pool(
     model_factory: Callable[[], Any],
     lam: float,
     verbose: bool = False,
+    knockout_mode: str = "zero",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Knockout deltas on the scoring slices; returns (names, deltas, s_inv)."""
-    cs = CauST(model_factory=model_factory, lam=lam).fit(
+    cs = CauST(model_factory=model_factory, lam=lam, knockout_mode=knockout_mode).fit(
         [slices[i][:, list(pool)].copy() for i in scoring], verbose=verbose
     )
     return np.asarray(cs.common_genes_), np.asarray(cs.deltas_), np.asarray(cs.scores_)
@@ -594,6 +595,7 @@ def run_transfer(
                 _model_factory(cfg, random_state=cfg.seed),
                 lam,
                 verbose,
+                str(sel.get("knockout_mode", "zero")),
             )
             np.savez(scores_path, names=np.asarray(names, dtype=str), deltas=deltas)
             if verbose:

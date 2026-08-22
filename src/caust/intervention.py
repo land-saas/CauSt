@@ -18,6 +18,7 @@ def knockout_scores(
     model: BaseSpatialModel,
     gene_indices: np.ndarray | list[int] | None = None,
     verbose: bool = False,
+    mode: str = "zero",
 ) -> np.ndarray:
     """Compute delta^(g,e) for a single fitted model (one slice).
 
@@ -29,6 +30,9 @@ def knockout_scores(
         Genes to score. Defaults to all genes. Genes not scored get ``nan``.
     verbose
         Print progress roughly ten times over the scored genes.
+    mode
+        ``"zero"`` silences the gene; ``"mean"`` replaces it by its mean (an
+        on-manifold ablation, for the zeroing-vs-imputation control).
 
     Returns
     -------
@@ -47,7 +51,7 @@ def knockout_scores(
     total = len(gene_indices)
     step = max(1, total // 10)
     for count, g in enumerate(gene_indices):
-        Zg = model.get_knockout_embedding(int(g))
+        Zg = model.get_knockout_embedding(int(g), mode)
         delta[g] = np.linalg.norm(base - Zg, axis=1).mean()
         if verbose and (count + 1) % step == 0:
             print(f"  knockout scoring {count + 1}/{total} genes")
