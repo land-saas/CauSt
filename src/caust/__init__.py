@@ -10,6 +10,7 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 
+from . import pl, tl
 from .cluster import ari, cluster_embedding, nmi
 from .config import ExperimentConfig, load_config
 from .data import make_synthetic_cohort, make_synthetic_slice
@@ -29,6 +30,8 @@ except PackageNotFoundError:  # pragma: no cover - running from a bare checkout
 
 __all__ = [
     "CauST",
+    "tl",
+    "pl",
     "BaseSpatialModel",
     "SimpleSpatialModel",
     "ExperimentConfig",
