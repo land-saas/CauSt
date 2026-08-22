@@ -1,4 +1,4 @@
-"""Command-line entry point: ``caust demo``, ``caust run``, ``caust verify``."""
+"""Command-line entry point: ``caust demo``, ``run``, ``verify``, ``transfer``."""
 
 from __future__ import annotations
 
@@ -38,6 +38,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("verify", help="re-run a recorded run and compare metrics")
     v.add_argument("rundir", type=Path, help="a results/<run_id> directory")
+
+    t = sub.add_parser(
+        "transfer", help="cross-slice transfer benchmark (every slice as source)"
+    )
+    t.add_argument("-c", "--config", type=Path, required=True, help="YAML config path")
+    t.add_argument("-o", "--outdir", type=Path, default=DEFAULT_RESULTS_DIR)
+    t.add_argument(
+        "--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE"
+    )
+    t.add_argument("--figures", action="store_true", help="also write figures")
+    t.add_argument(
+        "--fresh",
+        action="store_true",
+        help="discard finished cells instead of resuming",
+    )
 
     return parser
 
@@ -123,6 +138,35 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     return 1
 
 
+def _cmd_transfer(args: argparse.Namespace) -> int:
+    from .config import ConfigError, load_config
+    from .experiment import ExperimentError
+    from .transfer import run_transfer
+
+    try:
+        cfg = load_config(args.config, args.overrides)
+    except ConfigError as exc:
+        print(f"error: {exc}")
+        return 2
+    rundir = Path(args.outdir) / cfg.run_id
+    print(f"benchmark : {cfg.name}\nrun id    : {cfg.run_id}\noutput    : {rundir}")
+    try:
+        summary = run_transfer(cfg, rundir, figures=args.figures, resume=not args.fresh)
+    except ExperimentError as exc:
+        print(f"error: {exc}")
+        return 2
+    print("\ncross-donor transfer ARI (mean over source-target pairs and seeds):")
+    print("  " + "K".rjust(9) + "".join(f"{s:>12s}" for s in summary["strategies"]))
+    for k in summary["k_values"]:
+        cells = []
+        for s in summary["strategies"]:
+            e = summary["table"][s].get(str(k), {}).get("cross_donor")
+            cells.append(f"{e['mean']:.3f}" if e else "-")
+        print("  " + f"{k:>9d}" + "".join(f"{c:>12s}" for c in cells))
+    print(f"\nartifacts written to {rundir}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -132,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     if args.command == "verify":
         return _cmd_verify(args)
+    if args.command == "transfer":
+        return _cmd_transfer(args)
     parser.print_help()
     return 1
 

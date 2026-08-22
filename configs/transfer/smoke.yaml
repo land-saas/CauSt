@@ -1,0 +1,22 @@
+# Seconds-long synthetic run of the transfer protocol (tests, CI).
+name: transfer_smoke
+seed: 0
+threads: 1
+data:
+  source: synthetic
+  n_slices: 3
+  grid: 8
+  n_causal: 4
+  n_hvg_rank: 40
+model:
+  backend: simple
+  n_components: 6
+selection:
+  lam: 1.0
+  n_hvg_pool: 40
+  k_values: [4, 8]
+  strategies: [hvg, highdelta, caust]
+evaluation:
+  seeds: [0, 1]
+  cluster_method: eee
+  jaccard_n_top: 10

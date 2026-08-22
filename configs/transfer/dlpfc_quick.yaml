@@ -1,0 +1,8 @@
+# A reduced grid of the full benchmark for a first look (~30-40 min on an
+# Apple-silicon GPU): three gene budgets, three seeds, same protocol.
+defaults: dlpfc_stagate.yaml
+name: dlpfc_transfer_quick
+selection:
+  k_values: [50, 100, 400]
+evaluation:
+  seeds: [0, 1, 2]

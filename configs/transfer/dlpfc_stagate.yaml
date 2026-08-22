@@ -1,0 +1,33 @@
+# The proposal's headline evaluation: all 12 DLPFC slices as source, zero-shot
+# transfer to every slice, STAGATE backbone, mclust-EEE-equivalent clustering,
+# three gene-selection strategies at equal gene counts. Resumable; hours on a
+# laptop GPU (training cost grows with K).
+name: dlpfc_transfer_stagate
+seed: 0
+threads: 1
+
+data:
+  source: dlpfc
+  root: data/DLPFC
+  samples: [151507, 151508, 151509, 151510, 151669, 151670, 151671, 151672,
+            151673, 151674, 151675, 151676]
+  n_hvg_rank: 8000        # depth of the per-slice seurat_v3 HVG ranking
+
+model:
+  backend: stagate
+  hidden_dim: 512
+  latent_dim: 30
+  n_epochs: 1000
+  device: auto
+
+selection:
+  lam: 2.0
+  n_hvg_pool: 8000        # knockout pool = intersection of top-8000 HVGs of the scoring slices
+  # scoring_slices: defaults to the first slice of each donor (151507, 151669, 151673)
+  k_values: [50, 100, 200, 400, 800, 1600, 3200]
+  strategies: [hvg, highdelta, caust]
+
+evaluation:
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  cluster_method: eee
+  jaccard_n_top: 3000
