@@ -14,9 +14,11 @@ from sklearn.mixture import GaussianMixture
 #: Clustering back-ends. ``"eee"`` is the Python equivalent of mclust's EEE
 #: model (equal volume, shape and orientation = one shared full covariance),
 #: which STAGATE and the CauST proposal use; ``"full"`` is the per-component
-#: covariance used by the synthetic demo; ``"mclust"`` calls R's mclust through
-#: rpy2 for exact parity when R is available.
-CLUSTER_METHODS = ("full", "eee", "mclust")
+#: covariance used by the synthetic demo; ``"mclust_eee"`` is the same model
+#: initialised like mclust does -- from a deterministic hierarchical clustering
+#: rather than a seeded k-means -- so its labels do not depend on the seed;
+#: ``"mclust"`` calls R's mclust through rpy2 for exact parity when R exists.
+CLUSTER_METHODS = ("full", "eee", "mclust_eee", "mclust")
 
 
 def cluster_embedding(
@@ -30,6 +32,8 @@ def cluster_embedding(
         raise ValueError(f"method must be one of {CLUSTER_METHODS}, got {method!r}")
     if method == "mclust":
         return _mclust(embedding, n_clusters, random_state)
+    if method == "mclust_eee":
+        return _hierarchical_eee(np.asarray(embedding, dtype=float), n_clusters)
     gm = GaussianMixture(
         n_components=n_clusters,
         covariance_type="tied" if method == "eee" else "full",
@@ -82,4 +86,32 @@ def _mclust(embedding: np.ndarray, n_clusters: int, random_state: int) -> np.nda
         numpy2ri.numpy2rpy(np.asarray(embedding, dtype=float)), n_clusters, "EEE"
     )
     labels: np.ndarray = np.asarray(res[-2]).astype(int) - 1
+    return labels
+
+
+def _hierarchical_eee(Z: np.ndarray, n_clusters: int) -> np.ndarray:
+    """Tied-covariance EM started from a Ward hierarchical partition.
+
+    mclust initialises EM from model-based hierarchical clustering, which is
+    what makes its results reproducible without a seed; Ward linkage is the
+    Euclidean analogue. The EM step then refines the partition exactly as the
+    EEE model (one shared full covariance) does.
+    """
+    from sklearn.cluster import AgglomerativeClustering
+
+    init = AgglomerativeClustering(n_clusters=n_clusters, linkage="ward").fit_predict(Z)
+    means = np.vstack([Z[init == k].mean(axis=0) for k in range(n_clusters)])
+    weights = np.bincount(init, minlength=n_clusters) / len(init)
+    centred = Z - means[init]
+    cov = centred.T @ centred / len(Z) + 1e-6 * np.eye(Z.shape[1])
+    gm = GaussianMixture(
+        n_components=n_clusters,
+        covariance_type="tied",
+        weights_init=weights,
+        means_init=means,
+        precisions_init=np.linalg.inv(cov),
+        random_state=0,
+    )
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        labels: np.ndarray = np.asarray(gm.fit_predict(Z))
     return labels

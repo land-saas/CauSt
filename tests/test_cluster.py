@@ -48,3 +48,17 @@ def test_cluster_method_eee_and_validation():
     assert len(set(labels)) == 2
     with pytest.raises(ValueError, match="method must be one of"):
         cluster_embedding(emb, 2, method="nope")
+
+
+def test_mclust_eee_is_seed_independent():
+    import numpy as np
+
+    from caust.cluster import ari, cluster_embedding
+
+    rng = np.random.default_rng(1)
+    emb = np.vstack([rng.normal(c, 1.0, (40, 4)) for c in (0, 5, 10)])
+    a = cluster_embedding(emb, 3, random_state=0, method="mclust_eee")
+    b = cluster_embedding(emb, 3, random_state=99, method="mclust_eee")
+    assert np.array_equal(a, b)
+    truth = np.repeat([0, 1, 2], 40)
+    assert ari(truth, a) > 0.9
