@@ -1,0 +1,14 @@
+# The DLPFC transfer benchmark with the GraphST backbone, to show the gene
+# sets are not STAGATE-specific. Same protocol as dlpfc_stagate.yaml.
+defaults: dlpfc_stagate.yaml
+name: dlpfc_transfer_graphst
+model:
+  backend: graphst
+  latent_dim: 64
+  n_epochs: 600
+  n_neighbors: 3
+  device: auto
+selection:
+  k_values: [50, 100, 400]
+evaluation:
+  seeds: [0, 1, 2]

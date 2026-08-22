@@ -7,7 +7,6 @@ import pytest
 
 from caust import SimpleSpatialModel
 from caust.data import make_synthetic_slice
-from caust.models import STAGATEAdapter
 
 
 def test_forward_before_fit_raises():
@@ -41,15 +40,3 @@ def test_rank1_knockout_matches_naive_forward(slice_small):
         fast = m.get_knockout_embedding(idx)
         naive = BaseSpatialModel.get_knockout_embedding(m, idx)
         np.testing.assert_allclose(fast, naive, atol=1e-10)
-
-
-def test_stagate_adapter_is_a_stub(slice_small):
-    adapter = STAGATEAdapter()
-    with pytest.raises(NotImplementedError):
-        adapter.fit(slice_small)
-    with pytest.raises(NotImplementedError):
-        adapter.get_embedding()
-    with pytest.raises(NotImplementedError):
-        adapter.forward(np.zeros((2, 2)))
-    with pytest.raises(NotImplementedError):
-        adapter._get_expression()

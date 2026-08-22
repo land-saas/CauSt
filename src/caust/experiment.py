@@ -108,8 +108,18 @@ def _model_factory(cfg: ExperimentConfig, random_state: int | None = None):
             return STAGATEModel(**params)
 
         return stagate_factory
+    if backend == "graphst":
+        try:
+            from .models.graphst import GraphSTModel
+        except ImportError as exc:
+            raise ExperimentError(str(exc)) from None
+
+        def graphst_factory() -> GraphSTModel:
+            return GraphSTModel(**params)
+
+        return graphst_factory
     raise ExperimentError(
-        f"unsupported model.backend {backend!r}; expected 'simple' or 'stagate'"
+        f"unsupported model.backend {backend!r}; expected simple, stagate or graphst"
     )
 
 

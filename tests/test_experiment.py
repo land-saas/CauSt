@@ -105,7 +105,7 @@ def test_unsupported_data_source_is_rejected():
 
 
 def test_unsupported_backend_is_rejected():
-    bad = cfg(model={"backend": "graphst"})
+    bad = cfg(model={"backend": "spagcn"})
     with pytest.raises(ExperimentError, match="unsupported model.backend"):
         run_experiment(bad, Path("unused"), write=False)
 

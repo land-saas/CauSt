@@ -102,7 +102,6 @@ addopts = "-q"
 [tool.coverage.run]
 branch = true
 source = ["caust"]
-omit = ["src/caust/models/stagate_adapter.py"]
 
 [tool.coverage.report]
 show_missing = true

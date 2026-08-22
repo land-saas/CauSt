@@ -22,7 +22,7 @@ from anndata import AnnData
 from .invariance import invariance_scores, select_causal_genes, soft_weights
 from .pipeline import CauST
 
-BACKBONES = ("simple", "stagate")
+BACKBONES = ("simple", "stagate", "graphst")
 
 
 def _factory(backbone: str, **params: Any):
@@ -34,6 +34,10 @@ def _factory(backbone: str, **params: Any):
         from .models.stagate import STAGATEModel
 
         return lambda: STAGATEModel(**params)
+    if backbone == "graphst":
+        from .models.graphst import GraphSTModel
+
+        return lambda: GraphSTModel(**params)
     raise ValueError(f"backbone must be one of {BACKBONES}, got {backbone!r}")
 
 
