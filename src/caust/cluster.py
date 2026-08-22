@@ -12,13 +12,28 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.mixture import GaussianMixture
 
 
+#: Clustering back-ends. ``"eee"`` is the Python equivalent of mclust's EEE
+#: model (equal volume, shape and orientation = one shared full covariance),
+#: which STAGATE and the CauST proposal use; ``"full"`` is the per-component
+#: covariance used by the synthetic demo; ``"mclust"`` calls R's mclust through
+#: rpy2 for exact parity when R is available.
+CLUSTER_METHODS = ("full", "eee", "mclust")
+
+
 def cluster_embedding(
-    embedding: np.ndarray, n_clusters: int, random_state: int = 42
+    embedding: np.ndarray,
+    n_clusters: int,
+    random_state: int = 42,
+    method: str = "full",
 ) -> np.ndarray:
     """Cluster a spatial embedding into ``n_clusters`` domains (labels 0..K-1)."""
+    if method not in CLUSTER_METHODS:
+        raise ValueError(f"method must be one of {CLUSTER_METHODS}, got {method!r}")
+    if method == "mclust":
+        return _mclust(embedding, n_clusters, random_state)
     gm = GaussianMixture(
         n_components=n_clusters,
-        covariance_type="full",
+        covariance_type="tied" if method == "eee" else "full",
         random_state=random_state,
     )
     # The k-means initialization inside GaussianMixture computes pairwise
@@ -49,3 +64,23 @@ def _encode(labels: np.ndarray) -> np.ndarray:
     _, inv = np.unique(arr, return_inverse=True)
     encoded: np.ndarray = np.asarray(inv)
     return encoded
+
+
+def _mclust(embedding: np.ndarray, n_clusters: int, random_state: int) -> np.ndarray:
+    """R mclust (model EEE) via rpy2, exactly as the STAGATE tutorials do."""
+    try:
+        import rpy2.robjects as robjects
+        from rpy2.robjects import numpy2ri
+    except ImportError:  # pragma: no cover - optional R bridge
+        raise ImportError(
+            "method='mclust' needs R, the mclust package, and rpy2; "
+            "use method='eee' for the pure-Python equivalent"
+        ) from None
+    numpy2ri.activate()
+    robjects.r.library("mclust")
+    robjects.r["set.seed"](random_state)
+    res = robjects.r["Mclust"](
+        numpy2ri.numpy2rpy(np.asarray(embedding, dtype=float)), n_clusters, "EEE"
+    )
+    labels: np.ndarray = np.asarray(res[-2]).astype(int) - 1
+    return labels

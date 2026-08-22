@@ -34,3 +34,17 @@ def test_nmi_bounds():
 
 def test_ari_handles_string_and_int_labels():
     assert ari([0, 0, 1, 1], ["a", "a", "b", "b"]) == 1.0
+
+
+def test_cluster_method_eee_and_validation():
+    import numpy as np
+    import pytest
+
+    from caust.cluster import cluster_embedding
+
+    rng = np.random.default_rng(0)
+    emb = np.vstack([rng.normal(0, 1, (20, 3)), rng.normal(6, 1, (20, 3))])
+    labels = cluster_embedding(emb, 2, random_state=0, method="eee")
+    assert len(set(labels)) == 2
+    with pytest.raises(ValueError, match="method must be one of"):
+        cluster_embedding(emb, 2, method="nope")

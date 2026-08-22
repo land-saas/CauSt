@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -68,18 +68,31 @@ def build_cohort(cfg: ExperimentConfig) -> list[AnnData]:
     )
 
 
-def _model_factory(cfg: ExperimentConfig):
+def _model_factory(cfg: ExperimentConfig, random_state: int | None = None):
+    """Zero-arg constructor for the configured backbone (``model.backend``)."""
     params = dict(cfg.model)
     backend = params.pop("backend", "simple")
-    if backend != "simple":
-        raise ExperimentError(
-            f"unsupported model.backend {backend!r}; only 'simple' is wired up so far"
-        )
+    if random_state is not None:
+        params["random_state"] = random_state
+    if backend == "simple":
 
-    def factory() -> SimpleSpatialModel:
-        return SimpleSpatialModel(**params)
+        def factory() -> SimpleSpatialModel:
+            return SimpleSpatialModel(**params)
 
-    return factory
+        return factory
+    if backend == "stagate":
+        try:
+            from .models.stagate import STAGATEModel
+        except ImportError as exc:
+            raise ExperimentError(str(exc)) from None
+
+        def stagate_factory() -> STAGATEModel:
+            return STAGATEModel(**params)
+
+        return stagate_factory
+    raise ExperimentError(
+        f"unsupported model.backend {backend!r}; expected 'simple' or 'stagate'"
+    )
 
 
 def hvg_scores(adatas: Sequence[AnnData]) -> np.ndarray:
@@ -100,6 +113,8 @@ def _evaluate(
     n_domains: int,
     seed: int,
     n_restarts: int = 5,
+    model_factory: Callable[[], Any] | None = None,
+    cluster_method: str = "full",
 ) -> dict[str, Any]:
     """Score a gene set on a slice, averaged over several clustering restarts.
 
@@ -117,14 +132,18 @@ def _evaluate(
         raise ExperimentError(f"evaluation.n_restarts must be >= 1, got {n_restarts}")
 
     sub = adata[:, keep].copy()
-    model = SimpleSpatialModel(random_state=seed).fit(sub)
+    model = (
+        SimpleSpatialModel(random_state=seed) if model_factory is None else model_factory()
+    ).fit(sub)
     embedding = model.get_embedding()
     truth = adata.obs["domain"]
 
     aris, nmis = [], []
     first_pred = None
     for r in range(n_restarts):
-        pred = cluster_embedding(embedding, n_clusters=n_domains, random_state=seed + r)
+        pred = cluster_embedding(
+            embedding, n_clusters=n_domains, random_state=seed + r, method=cluster_method
+        )
         if first_pred is None:
             first_pred = pred
         aris.append(ari(truth, pred))
@@ -193,8 +212,12 @@ def run_experiment(
             "caust": caust_sel,
         }
         n_restarts = int(cfg.evaluation.get("n_restarts", 5))
+        cluster_method = str(cfg.evaluation.get("cluster_method", "full"))
+        eval_factory = _model_factory(cfg, random_state=cfg.seed)
         scored = {
-            arm: _evaluate(held, genes, n_domains, cfg.seed, n_restarts)
+            arm: _evaluate(
+                held, genes, n_domains, cfg.seed, n_restarts, eval_factory, cluster_method
+            )
             for arm, genes in arms.items()
         }
         # Predicted labels are plotting data, not metrics; keep them out of the

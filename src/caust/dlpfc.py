@@ -76,6 +76,18 @@ CHECKSUMS: dict[str, str] = {
     "151508/metadata.tsv": (
         "8d54300a7a767dc2d9c10d8d194cc46e8aa2b0e7c388c89c92b6da538e3aa118"
     ),
+    "151509/filtered_feature_bc_matrix.h5": (
+        "35a4850aebdfdccb9fdf2f79cebeebc037684a79c03adb4bcdffa7c7c68486fc"
+    ),
+    "151509/metadata.tsv": (
+        "20fc26f68689fb98def7f6c0b1541cfcccd2f5b368fc72453913bf6dbfd2463e"
+    ),
+    "151510/filtered_feature_bc_matrix.h5": (
+        "421a77bad2e08326a627d91a8994e1f47afb61b75aba815204b2b37c2aed26e9"
+    ),
+    "151510/metadata.tsv": (
+        "83c0ef6403d1cf5a2659c05cfc912e5d666c1cb21348a4d5159cdeb3da5246cd"
+    ),
     "151669/filtered_feature_bc_matrix.h5": (
         "4c92c56291f22c31abdc76eb4d7e638ffc5b72e3c08de1142cd76ca731cbea14"
     ),
@@ -88,11 +100,41 @@ CHECKSUMS: dict[str, str] = {
     "151670/metadata.tsv": (
         "050ab781bdf8abde7539fd1d75a304296f61223bb756d1f9d9bb2602370e64f3"
     ),
+    "151671/filtered_feature_bc_matrix.h5": (
+        "6b6b86696b377fb44fd367e80c3820209f8977cb62af4b4715c37c6faf80baa5"
+    ),
+    "151671/metadata.tsv": (
+        "a73e9f7d4199801e2a783cc8803aa9496c568738777ee8546671969010316745"
+    ),
+    "151672/filtered_feature_bc_matrix.h5": (
+        "a28ad2b88314d16b1bbde612fb80d12460ce84981cf4c00902ca046cafae4009"
+    ),
+    "151672/metadata.tsv": (
+        "93f1eb6853df48c3467784f5ab81d99fcf2e94c5f4b997d16a21e8f1d10e09ea"
+    ),
     "151673/filtered_feature_bc_matrix.h5": (
         "216e8010e1c313925afa0f174207da7c8947497c960e81b07edbd16176460413"
     ),
     "151673/metadata.tsv": (
         "1e6dcce1a6e0a7dcb8f0178521d3c39873be41bd5a9cdfc061f1b84a436a0d07"
+    ),
+    "151674/filtered_feature_bc_matrix.h5": (
+        "0ecbabdb0ea98893f41bf7b557d8de50f1e9833eb2e55b69740b85b985c01880"
+    ),
+    "151674/metadata.tsv": (
+        "a6ee7a6de23ff44db6269c399e524a6c6369522bafd1b1d876a67f56e4749af0"
+    ),
+    "151675/filtered_feature_bc_matrix.h5": (
+        "eba1f479b85df34dd6b58144c1fcdfbf2ad8fb01fe80caabb9bf64a2ce36394a"
+    ),
+    "151675/metadata.tsv": (
+        "75db54be0b2af812302d08934df0b5aa8a9d8a87629427fa358350df8dc6d8a7"
+    ),
+    "151676/filtered_feature_bc_matrix.h5": (
+        "f436605010a0133c96d1135f22fdd789317779287af58ba5af764fc1b28ea041"
+    ),
+    "151676/metadata.tsv": (
+        "d787d3e414a29c526fe07c74432f5b382c03c6ff042c2de45ad4b053c036cdd9"
     ),
 }
 

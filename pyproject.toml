@@ -46,7 +46,7 @@ dependencies = [
 
 # User-facing optional features (installable from PyPI as caust[viz] etc.).
 [project.optional-dependencies]
-stagate = ["torch>=1.10", "scanpy>=1.9"]
+stagate = ["torch>=2.0", "scanpy>=1.9", "scikit-misc>=0.3"]
 viz = ["matplotlib>=3.5"]
 
 # Development tooling (PEP 735). Not part of the published package metadata;
