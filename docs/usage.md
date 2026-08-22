@@ -51,6 +51,9 @@ caust.pl.ranking(slices[0], n=20, markers=["MBP", "NRGN", "SNAP25"])
 caust.pl.domains(slices[0], "caust_domain")
 ```
 
+A fully executed walkthrough of this workflow on the DLPFC cohort is in
+[`docs/tutorials/dlpfc_quickstart.ipynb`](https://github.com/land-saas/CauSt/blob/main/docs/tutorials/dlpfc_quickstart.ipynb).
+
 ## The STAGATE backbone
 
 `caust.models.stagate.STAGATEModel` is a pure-PyTorch implementation of the
