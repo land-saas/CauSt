@@ -1,13 +1,16 @@
 # CauST
 
-**Causal Gene Intervention for Robust Spatial Domain Identification**
+**Causal gene selection for spatial domain identification that transfers across donors.**
 
-CauST selects genes for spatial domain identification by *causal intervention*
-rather than by variance (highly variable genes, HVGs). It silences each gene
-in-silico on a frozen spatial model, measures how much the spatial embedding
-shifts, and keeps only genes whose effect is **large and stable across donors**.
-The result is a gene set that transfers across tissue slices far better than a
-variance-selected one.
+`pip install caust` — [PyPI](https://pypi.org/project/caust/) · [GitHub](https://github.com/land-saas/CauSt)
+
+CauST silences each gene *in silico* on a frozen spatial model (STAGATE,
+GraphST, or a linear reference backbone), measures how far the spatial
+embedding moves, and keeps the genes whose effect is **large and stable across
+donors** — an invariance-regularized model-reliance score rather than a
+variance ranking. On the 12-slice DLPFC benchmark the selected genes transfer
+to unseen donors better than highly variable genes at equal gene count; see
+[Results](results.md) for the numbers and the statistics behind them.
 
 ## Why causal gene selection?
 
