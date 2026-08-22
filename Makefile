@@ -3,7 +3,7 @@
 # requires an activated virtualenv — uv keeps .venv in sync with uv.lock.
 .DEFAULT_GOAL := help
 
-.PHONY: help install install-dev lint format typecheck test cov demo benchmark repro dlpfc verify determinism lock docs build clean check
+.PHONY: help install install-dev lint format typecheck test cov demo benchmark repro dlpfc verify determinism lock docs build publish-test clean check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -69,8 +69,13 @@ lock:  ## Re-resolve uv.lock after changing dependencies in pyproject.toml
 docs:  ## Build the documentation site
 	uv run --group docs mkdocs build --strict
 
-build:  ## Build sdist and wheel
+build:  ## Build sdist and wheel (from a clean tree, so stale build/ cannot leak in)
+	rm -rf build dist src/*.egg-info
 	uv build
+	uvx twine check --strict dist/*
+
+publish-test: build  ## Rehearse a release on TestPyPI (needs UV_PUBLISH_TOKEN in the environment)
+	uv publish --publish-url https://test.pypi.org/legacy/ --check-url https://test.pypi.org/simple/
 
 check: lint typecheck cov  ## Lint + type-check + tests with coverage
 

@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/land-saas/CauSt"
 url: "https://github.com/land-saas/CauSt"
 version: "0.1.0"
-date-released: "2026-03-01"
+date-released: "2026-08-13"
 license: MIT
 keywords:
   - spatial transcriptomics

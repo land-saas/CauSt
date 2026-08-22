@@ -54,3 +54,25 @@ Use [Conventional Commits](https://www.conventionalcommits.org): `feat:`,
 
 Open an issue at https://github.com/land-saas/CauSt/issues with a minimal
 reproducible example (ideally built on `make_synthetic_cohort`).
+
+## Releasing
+
+Releases are published to PyPI by `.github/workflows/release.yml` through
+[trusted publishing](https://docs.pypi.org/trusted-publishers/) — no API token
+is stored anywhere. The workflow runs when a GitHub release is *published*, and
+refuses to upload if the release tag disagrees with `version` in
+`pyproject.toml` (PyPI burns a version number permanently on first upload).
+
+1. Bump `version` in `pyproject.toml` (the single source; `caust.__version__`
+   reads it from the installed metadata), move the `[Unreleased]` entries in
+   `CHANGELOG.md` under a dated heading, and update `date-released` in
+   `CITATION.cff`. Commit, push, and wait for CI to be green.
+2. Optional rehearsal: `make publish-test` builds, checks, and uploads to
+   TestPyPI (export a TestPyPI token as `UV_PUBLISH_TOKEN` in your shell first;
+   never write it to a file).
+3. `gh release create vX.Y.Z --target main --title "CauST X.Y.Z" --notes-file <(...)`
+   — the tag is created at the tip of `main`, the workflow builds the sdist and
+   wheel, runs `twine check --strict`, publishes to PyPI, and attaches the same
+   files to the GitHub release.
+4. Confirm: `pip install caust==X.Y.Z` in a fresh environment and check
+   https://pypi.org/project/caust/.

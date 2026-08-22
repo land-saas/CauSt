@@ -120,12 +120,21 @@ uv sync
 ```
 
 Prefix any command with `uv run` (no manual venv activation needed), or use
-the `make` targets below. Installing with pip also works for the runtime
-package:
+the `make` targets below.
+
+To use CauST as a library or CLI in your own environment, install the
+released package from PyPI:
 
 ```bash
-pip install -e .          # core (numpy / scipy / scikit-learn / anndata)
-pip install -e ".[viz]"   # + matplotlib, for the benchmark figures
+pip install caust            # core (numpy / scipy / scikit-learn / anndata)
+pip install "caust[viz]"     # + matplotlib, for the benchmark figures
+```
+
+or an editable checkout:
+
+```bash
+pip install -e .          # core
+pip install -e ".[viz]"   # + matplotlib
 ```
 
 ## Quick start

@@ -7,6 +7,9 @@ frozen spatial model and *cross-donor invariance*, rather than by variance
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
+
 from .cluster import ari, cluster_embedding, nmi
 from .config import ExperimentConfig, load_config
 from .data import make_synthetic_cohort, make_synthetic_slice
@@ -19,7 +22,10 @@ from .models.simple import SimpleSpatialModel
 from .pipeline import CauST
 from .repro import collect_provenance, deterministic, set_global_seeds
 
-__version__ = "0.1.0"
+try:
+    __version__ = _dist_version("caust")
+except PackageNotFoundError:  # pragma: no cover - running from a bare checkout
+    __version__ = "0+unknown"
 
 __all__ = [
     "CauST",

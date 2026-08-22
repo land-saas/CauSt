@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-08-13
+
+First public release on PyPI (`pip install caust`).
+
 ### Added
 - **Config-driven experiments and a reproducibility harness.** Experiments are
   described in YAML under `configs/` (with `defaults:` inheritance and
@@ -15,13 +21,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   flag, package versions, platform, seed, BLAS thread counts, artifact
   checksums). `caust verify <rundir>` re-runs a recorded config and fails if the
   numbers moved. New modules: `caust.config`, `caust.experiment`, `caust.repro`.
-- `requirements.lock` (pinned runtime environment), a `Dockerfile` for a
-  hermetic run, `REPRODUCIBILITY.md`, and `make repro` / `verify` / `determinism`
-  / `lock` targets.
+- A `Dockerfile` for a hermetic run, `REPRODUCIBILITY.md`, and `make repro` /
+  `verify` / `determinism` / `lock` targets.
 - A CI job that runs the same config in two separate processes and fails unless
   the artifacts are byte-identical.
-
-### Added
 - **Real-data support: the spatialLIBD DLPFC cohort.** `caust.dlpfc` fetches
   10x Visium slices of human cortex (counts + manual layer annotations) with
   pinned SHA-256 checksums and a scanpy-free 10x HDF5 reader, and
@@ -37,6 +40,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   update — O(N·d) per gene instead of O(N·G·d). Scoring 2,000 real genes
   across five slices takes seconds. (Recorded results re-verify after
   regeneration; low-order float bits differ from the old full-forward path.)
+- `scripts/benchmark.py` — a held-out-donor comparison against the variance
+  (HVG) baseline, the project's central claim, plus the figures in
+  `docs/figures/`. CauST recovers 8/8 causal genes to HVG's 1/8 and matches the
+  all-genes ARI (1.000 vs 0.798) using 8x fewer genes.
+- A regression test asserting CauST beats variance-based selection on a held-out
+  donor; previously no test covered the baseline the project claims to beat.
+- A release-workflow guard that fails if the git tag disagrees with the packaged
+  version, since PyPI burns a version number permanently on first upload.
+- `make benchmark`; `ruff`/`black` now also cover `scripts/`, which was unlinted.
+- Packaging metadata, classifiers, and `py.typed` marker for a typed
+  distribution.
+- Continuous integration (lint, type-check, test matrix over Python
+  3.9–3.12), release, and docs GitHub Actions workflows.
+- Pre-commit configuration (ruff, black, mypy, hygiene hooks) and a developer
+  `Makefile`.
+- Expanded test suite (unit + pipeline + CLI) reaching ≥99% coverage.
+- MkDocs documentation site, formal methods notes, `CONTRIBUTING.md`,
+  `CITATION.cff`, and a LaTeX technical report.
+- Initial CauST prototype: in-silico gene knockout scoring, cross-slice
+  invariance selection, the multi-slice pipeline, a dependency-light reference
+  backbone, synthetic multi-donor data, and a command-line demo.
 
 ### Changed
 - **The project is now managed with [uv](https://docs.astral.sh/uv/).** A
@@ -57,6 +81,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the CLI can no longer report different numbers for the same experiment.
 - Run outputs under `results/` are no longer blanket-ignored by git; a specific
   run can be committed with `git add -f` as a reference point.
+- Adopted the PEP 639 SPDX license form (`license = "MIT"` + `license-files`) and
+  dropped the deprecated License classifier, so builds are warning-free.
+- Standardized the distribution name to `caust`.
+- Type-annotated the public API so `mypy` passes with no errors.
+- Renamed `models/stagate_adpater.py` → `models/stagate_adapter.py`.
 
 ### Fixed
 - The provenance manifest recorded the machine's ambient BLAS thread count
@@ -81,39 +110,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `mypy` was configured for Python 3.10 while the package supports 3.9, so 3.9
   incompatibilities could pass type-checking.
 
-### Added
-- `scripts/benchmark.py` — a held-out-donor comparison against the variance
-  (HVG) baseline, the project's central claim, plus the figures in
-  `docs/figures/`. CauST recovers 8/8 causal genes to HVG's 1/8 and matches the
-  all-genes ARI (1.000 vs 0.798) using 8x fewer genes.
-- A regression test asserting CauST beats variance-based selection on a held-out
-  donor; previously no test covered the baseline the project claims to beat.
-- A release-workflow guard that fails if the git tag disagrees with the packaged
-  version, since PyPI burns a version number permanently on first upload.
-- `make benchmark`; `ruff`/`black` now also cover `scripts/`, which was unlinted.
-- Packaging metadata, classifiers, and `py.typed` marker for a typed
-  distribution.
-- Continuous integration (lint, type-check, test matrix over Python
-  3.9–3.12), release, and docs GitHub Actions workflows.
-- Pre-commit configuration (ruff, black, mypy, hygiene hooks) and a developer
-  `Makefile`.
-- Expanded test suite (unit + pipeline + CLI) reaching ≥99% coverage.
-- MkDocs documentation site, formal methods notes, `CONTRIBUTING.md`,
-  `CITATION.cff`, and a LaTeX technical report.
-
-### Changed
-- Adopted the PEP 639 SPDX license form (`license = "MIT"` + `license-files`) and
-  dropped the deprecated License classifier, so builds are warning-free.
-- Standardized the distribution name to `caust`.
-- Type-annotated the public API so `mypy` passes with no errors.
-- Renamed `models/stagate_adpater.py` → `models/stagate_adapter.py`.
-
 ### Removed
 - Stray zero-byte placeholder files and a misplaced editor settings file.
 
-## [0.1.0] - 2026-03-01
-
-### Added
-- Initial CauST prototype: in-silico gene knockout scoring, cross-slice
-  invariance selection, the multi-slice pipeline, a dependency-light reference
-  backbone, synthetic multi-donor data, and a command-line demo.
+[Unreleased]: https://github.com/land-saas/CauSt/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/land-saas/CauSt/releases/tag/v0.1.0

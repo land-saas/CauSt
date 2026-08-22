@@ -11,6 +11,7 @@ jobs:
     environment: pypi
     permissions:
       id-token: write  # trusted publishing (OIDC), no API token needed
+      contents: write  # attach the built sdist/wheel to the GitHub release
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
@@ -33,4 +34,10 @@ jobs:
       - name: Check artifacts
         run: uvx twine check --strict dist/*
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      # The same files PyPI received, attached to the release for anyone who
+      # wants to verify a download against PyPI without pip.
+      - name: Attach artifacts to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
