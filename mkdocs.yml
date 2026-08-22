@@ -27,6 +27,7 @@ theme:
 nav:
   - Home: index.md
   - Demo: demo.md
+  - Results: results.md
   - Roadmap: roadmap.md
   - Related work: related_work.md
   - Usage: usage.md

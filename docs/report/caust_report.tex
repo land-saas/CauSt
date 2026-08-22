@@ -46,14 +46,16 @@ report presents \textbf{CauST} (\emph{Causal Gene Intervention for Robust
 Spatial Domain Identification}), a framework that identifies genes whose
 in-silico knockout consistently disrupts spatial embeddings across multiple
 donors, and then uses only this causally invariant subset for domain
-identification. In a comprehensive 12-slice DLPFC evaluation (all slices as
-source, 10 random seeds, mclust clustering), CauST with just 100 genes achieves
-a cross-donor Adjusted Rand Index (ARI) of $0.514$---surpassing the HVG baseline
-with 3{,}200 genes ($0.456$)---while maintaining a near-zero generalization gap
-(ARI drop $= 0.001$). At equal gene counts, CauST outperforms HVG by 17--78\%
-across all tested $K$ values, winning 96/96 cross-donor transfer pairs at
-$K=100$. The selected genes are independently validated as known cortical layer
-markers, confirming biological relevance without label supervision. We
+identification. In a 12-slice DLPFC evaluation with a validated pure-PyTorch
+STAGATE backbone (every slice as source, zero-shot transfer to every other
+slice, paired tests over sources and donor pairs), the advantage of CauST over
+highly-variable-gene selection at equal gene counts is real but budget-dependent:
+at $K=400$ genes it reaches a cross-donor Adjusted Rand Index (ARI) of $0.430$
+against $0.374$ for HVG, winning on all 12 source slices ($p<0.001$), while at
+$K=50$--$100$ the cross-donor edge is small and not significant. The cross-donor
+stability penalty is what separates CauST from selecting by knockout magnitude
+alone at small budgets (11/12 sources, $p=0.002$ at $K=50$). The selected genes
+include established cortical layer markers, confirming biological relevance without label supervision. We
 accompany the method with an open-source, fully typed and tested reference
 implementation, and describe the software engineering practices that make the
 results reproducible.
@@ -235,121 +237,117 @@ this report reproducible from a single command.
 
 \subsection{Datasets and protocol}
 The primary benchmark is the human dorsolateral prefrontal cortex (DLPFC) Visium
-dataset~\citep{maynard2021}, comprising 12 slices across 3 donors with manual
-cortical-layer annotations. Table~\ref{tab:datasets} lists the datasets targeted
-by the toolkit. Clustering uses a Gaussian mixture (mclust EEE in the reference
-evaluation), and results are averaged over 10 random seeds. We report the
-Adjusted Rand Index (ARI) against manual annotations, both within-slice and in
-the cross-donor transfer setting (select genes and train on a source slice,
-evaluate zero-shot on a target slice from a different donor).
-
-\begin{table}[t]
-\centering
-\caption{Public ST datasets targeted for CauST benchmarking.}
-\label{tab:datasets}
-\begin{tabular}{llll}
-\toprule
-Dataset & Technology & Tissue & Sections \\
-\midrule
-DLPFC~\citep{maynard2021} & 10x Visium & Human DLPFC & 12 \\
-Mouse brain atlas & 10x Visium & Mouse cortex & 2 \\
-MERFISH hypothalamus & MERFISH & Mouse hypothalamus & 1 \\
-STARmap visual cortex & STARmap & Mouse visual cortex & 1 \\
-\bottomrule
-\end{tabular}
-\end{table}
+dataset~\citep{maynard2021}: 12 slices from 3 donors with manual cortical-layer
+annotations, fetched from public mirrors and verified against pinned SHA-256
+checksums. The backbone is a pure-PyTorch port of STAGATE validated against the
+reference implementation (final reconstruction loss 0.150 vs.\ 0.150, ARI 0.505
+vs.\ 0.495 on slice 151673). Clustering uses a tied-covariance Gaussian mixture,
+the Python equivalent of mclust's EEE model. Every slice serves as source: a
+backbone is trained on the source restricted to a strategy's $K$ genes and
+applied zero-shot to every slice; each embedding is clustered against the manual
+annotation over several seeds. We report within-slice, within-donor and
+cross-donor ARI, the generalization gap (within-slice minus cross-donor), and
+paired Wilcoxon signed-rank tests on \emph{independent units}---one value per
+source slice and one per ordered donor pair---rather than on the 96 shared-backbone
+cells. Two scoring protocols are implemented: \emph{pooled} (the proposal's
+design: knockout effects scored on one slice per donor, every donor included)
+and \emph{leave-target-donor-out} (the gene set used for the targets of donor $D$
+is scored only on the other donors' slices, so cross-donor ARI is out-of-donor
+for every strategy). All numbers below are from the pooled protocol on a reduced
+grid ($K\in\{50,100,400\}$, 3 clustering seeds); the out-of-donor grid with six
+strategies, six budgets and ten seeds is running and will replace this section.
 
 \subsection{HVG selection is dominated by donor-specific noise}
-As a motivating diagnostic, we measured the overlap of variance-selected genes
-across slices via the Jaccard index (Table~\ref{tab:jaccard}). Only about 21\% of
-correlation-selected genes are shared across donors, so a model trained on one
-donor is largely built on features absent in another---a direct mechanistic
-explanation for cross-donor ARI degradation.
+Top-3{,}000 seurat\_v3 HVGs were selected independently on each of the 12
+slices and compared pairwise by Jaccard index (Table~\ref{tab:jaccard}). Only
+about 21\% of variance-selected genes are shared across donors, so a model
+trained on one donor is largely built on features absent in another. These
+values reproduce the proposal's prototype to three decimals.
 
 \begin{table}[t]
 \centering
-\caption{Jaccard overlap of variance-selected genes.}
+\caption{Jaccard overlap of variance-selected genes (top-3{,}000 per slice).}
 \label{tab:jaccard}
 \begin{tabular}{lcc}
 \toprule
-Comparison & Jaccard similarity & Gene overlap \\
+Comparison & Jaccard similarity & Pairs \\
 \midrule
-Within same donor & $0.238 \pm 0.019$ & $\sim$24\% \\
-Across donors & $0.210 \pm 0.011$ & $\sim$21\% \\
+Within same donor & $0.238 \pm 0.019$ & 18 \\
+Across donors & $0.210 \pm 0.011$ & 48 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Main result}
-Table~\ref{tab:main} summarizes the headline comparison. At $K=100$ genes, CauST
-($\lambda=2$) reaches a cross-donor ARI of $0.514$, exceeding the HVG baseline
-that uses $3{,}200$ genes ($0.456$), while its within-slice-to-cross-donor
-generalization gap is just $0.001$. At equal gene counts, CauST outperforms HVG
-by 17--78\% across all tested $K$, and wins all 96/96 cross-donor transfer pairs
-and all 12/12 within-slice comparisons at $K=100$.
+Table~\ref{tab:main} summarizes the cross-donor comparison at equal gene counts.
+The advantage of CauST is real but depends on the gene budget. At $K=400$,
+CauST reaches a cross-donor ARI of $0.430$ against $0.374$ for the HVG baseline
+and wins on every one of the 12 source slices ($p<0.001$, Wilcoxon over
+sources) and all six donor pairs ($p=0.031$). At $K=50$ and $K=100$ the
+cross-donor edge is small ($+0.028$ and $+0.009$) and not significant at the
+source level.
 
 \begin{table}[t]
 \centering
-\caption{Cross-donor ARI on the 12-slice DLPFC benchmark (10 seeds, mclust).}
+\caption{Cross-donor ARI on the 12-slice DLPFC benchmark (pooled scoring, 3
+seeds; mean $\pm$ std over the 96 source--target cells). Paired tests are
+CauST vs.\ HVG over the 12 sources.}
 \label{tab:main}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-Method & Genes $K$ & Cross-donor ARI & Generalization gap \\
+$K$ & HVG & High-$\delta$ ($\lambda=0$) & CauST ($\lambda=2$) & CauST vs.\ HVG \\
 \midrule
-HVG baseline & 3{,}200 & 0.456 & 0.046 \\
-HVG baseline & 100 & 0.293 & --- \\
-High-$\delta$ ($\lambda=0$) & 100 & \textit{above HVG} & --- \\
-\textbf{CauST} ($\lambda=2$) & \textbf{100} & \textbf{0.514} & \textbf{0.001} \\
+50  & $0.293 \pm 0.076$ & $0.297 \pm 0.078$ & $\mathbf{0.321 \pm 0.081}$ & $+0.028$, 8/12, $p=0.11$ \\
+100 & $0.323 \pm 0.067$ & $0.319 \pm 0.105$ & $\mathbf{0.332 \pm 0.094}$ & $+0.009$, 6/12, $p=0.79$ \\
+400 & $0.374 \pm 0.081$ & $0.423 \pm 0.074$ & $\mathbf{0.430 \pm 0.080}$ & $\mathbf{+0.056}$, 12/12, $p<0.001$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{The invariance penalty is the key ingredient.}
-Selecting genes by knockout magnitude alone (High-$\delta$, $\lambda=0$) already
-beats HVG, but is consistently below CauST ($\lambda=2$). It is the requirement
-of \emph{stability across donors}, not merely importance in a single slice, that
-drives the dominant improvement. The gain is not attributable to a single
-favorable donor: the per-donor breakdown (Table~\ref{tab:perdonor}) shows
-+68\% to +86\% over HVG on every donor, from a gene set derived on only 3
-training slices (one per donor) yet applied to all 12.
+\paragraph{The invariance penalty matters most at small budgets.}
+High-$\delta$ ranks genes by knockout magnitude alone; CauST adds the
+cross-donor stability penalty. At $K=50$ CauST beats High-$\delta$ on 11 of 12
+sources ($+0.024$ ARI, $p=0.002$); the two converge as $K$ grows towards the
+size of the 2{,}002-gene pool ($+0.013$ at $K=100$, $+0.007$ at $K=400$). The
+generalization gap is close to zero for all strategies in this protocol, so we
+do not reproduce the prototype's claim that only CauST closes it. CauST's
+within-slice ARI is the least variable across sources at $K=400$ (std $0.035$
+vs.\ $0.080$ for HVG).
 
-\begin{table}[t]
-\centering
-\caption{Per-donor ARI at $K=100$ (source donor $\rightarrow$ all slices).}
-\label{tab:perdonor}
-\begin{tabular}{lccc}
-\toprule
-Source donor & HVG & CauST & $\Delta$ \\
-\midrule
-D1 (4 slices) & 0.281 & 0.523 & +86\% \\
-D2 (4 slices) & 0.293 & 0.527 & +80\% \\
-D3 (4 slices) & 0.293 & 0.491 & +68\% \\
-\bottomrule
-\end{tabular}
-\end{table}
+\paragraph{Relation to the prototype numbers in the proposal.}
+The proposal reported a cross-donor ARI of $0.514$ at $K=100$ and $96/96$
+cross-donor wins from an earlier prototype. Those figures are \emph{not}
+reproduced by this pipeline: absolute ARIs are roughly $0.1$ lower across every
+strategy, in line with independent benchmarks that re-run STAGATE under a
+standardized pipeline (Chen et al., iMeta 2025, report $0.498$ within-slice),
+and the Python tied-covariance mixture replaces R's mclust. The qualitative
+findings that do reproduce are the Jaccard diagnostics, the gene ranking, and a
+significant CauST advantage at larger budgets.
 
 \subsection{Biological validation}
-The genes CauST selects purely from the cross-slice invariance criterion---with
-no annotation input---include established cortical layer markers
-(Table~\ref{tab:markers}). The top-ranked genes (GAPDH, ACTB) are housekeeping
-genes whose knockout produces large, stable embedding shifts, while known layer
-markers such as NRGN, SNAP25, CCK, and MBP rank prominently. This confirms that
-the invariance criterion recovers biologically meaningful signal without label
-supervision.
+With no annotation input, the invariance ranking over the 2{,}002-gene pool
+places established cortical layer markers near the top
+(Table~\ref{tab:markers}): MBP (white matter) ranks 3rd, CCK 7th, NRGN 10th,
+CALM1 11th and SNAP25 16th; 13 of the proposal's prototype top-20 genes recur.
+Housekeeping genes (GAPDH, ACTB, TMSB10) also rank highly: silencing them
+produces large, donor-stable embedding shifts, a reminder that the score
+measures \emph{model reliance}, not biological causation.
 
 \begin{table}[t]
 \centering
-\caption{Selected cortical layer markers among CauST's top-ranked genes.}
+\caption{Known cortical layer markers among the top-20 invariance-ranked genes
+(pooled scoring on 151507, 151669, 151673; $\lambda=2$).}
 \label{tab:markers}
 \begin{tabular}{llll}
 \toprule
 Gene & Rank & Known role & Layer \\
 \midrule
-CALM1 & 5 & Calmodulin 1 & Broad cortical \\
-NRGN & 8 & Neuronal granin & Layer V/VI \\
-SNAP25 & 10 & Synaptosomal protein & Pan-neuronal \\
-CCK & 13 & Cholecystokinin & Cortical interneurons \\
-MBP & 16 & Myelin basic protein & White matter \\
+MBP & 3 & Myelin basic protein & White matter \\
+CCK & 7 & Cholecystokinin & Cortical interneurons \\
+NRGN & 10 & Neuronal granin & Layer V/VI \\
+CALM1 & 11 & Calmodulin 1 & Broad cortical \\
+SNAP25 & 16 & Synaptosomal protein & Pan-neuronal \\
+PLP1 & 18 & Proteolipid protein & White matter \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -373,26 +371,40 @@ causal genes are ranked above high-variance donor-specific noise genes.
 \section{Limitations and Roadmap}
 \label{sec:limitations}
 
-The present study validates the method with a dependency-light reference
-backbone and on the DLPFC benchmark. Full integration of trained
-STAGATE/GraphST/SpaGCN backbones, integrated-gradients attribution as an
-efficient proxy for exact knockouts, and a multi-dataset benchmark suite
-(Table~\ref{tab:datasets}) are the primary items on the roadmap. Exact knockout
-scoring is linear in the number of candidate genes; the gradient pre-filter is
-intended to keep this tractable as $G$ grows. Finally, while the invariance
-criterion is validated here on donor environments, extending it to other sources
-of variation (technology, tissue) is a natural direction.
+The knockout score measures \emph{model reliance} on a frozen backbone
+(Fisher, Rudin \& Dominici, 2019), not a biological causal effect; deep-model
+in-silico perturbations are not validated biology (Ahlmann-Eltze et al., 2025),
+and the term ``causal'' is reserved here for the invariance motivation
+(ICP, IRM, V-REx). The closest prior work---STAMarker's saliency on STAGATE,
+Geneformer's in-silico deletion, geneBasis, and donor-aware HVG ranking---
+already scores genes from trained models or across batches; CauST's
+contribution is the specific combination of a frozen-model ablation score, a
+cross-environment stability penalty, and evaluation by zero-shot transfer.
+
+The reported grid uses the pooled scoring protocol and three clustering seeds;
+the leave-target-donor-out grid with six strategies (adding donor-aware HVG,
+Moran's~I and random controls), six budgets and ten seeds is in progress, as
+are the same protocol on MERFISH hypothalamus and STARmap PFC sections and on
+the GraphST backbone. Three donors give a noisy estimate of cross-donor
+stability; the 30-sample spatialDLPFC cohort (Huuki-Myers et al., 2024) is the
+natural place to quantify how $\lambda$ interacts with the number of
+environments. Integrated-gradients attribution is implemented with a fidelity
+metric against exact knockouts and remains to be evaluated at scale. Extending
+the invariance criterion to other sources of variation (technology, tissue) is
+a natural direction.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-CauST replaces variance-based gene selection with causally grounded, cross-slice
-invariant filtering. In a comprehensive 12-slice evaluation with 10 seeds, CauST
-with just 100 genes achieves a cross-donor ARI of $0.514$, surpassing HVG with
-$3{,}200$ genes ($0.456$), with a near-zero generalization gap ($0.001$). The
-invariance penalty $\lambda$ is the critical ingredient: selecting by knockout
-magnitude alone helps, but requiring cross-donor stability is what drives the
-dominant improvement. Its backbone-agnostic design and open-source, rigorously
+CauST replaces variance-based gene selection with an invariance-regularized
+model-reliance criterion computed by in-silico knockout on a frozen spatial
+model. In a 12-slice DLPFC evaluation with paired tests on independent units,
+CauST beats HVG selection at equal gene counts by $+0.056$ cross-donor ARI at
+$K=400$ (12/12 sources), with a smaller, non-significant edge at $K\le 100$;
+the cross-donor stability penalty is what lifts CauST above knockout magnitude
+alone at small budgets. The prototype figures quoted in the proposal are not
+reproduced by this pipeline and are superseded by these numbers. Its
+backbone-agnostic design and open-source, rigorously
 tested implementation make CauST a practical foundation for robust spatial
 domain identification.
 

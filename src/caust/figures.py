@@ -50,6 +50,12 @@ def _plt() -> Any:
     return plt
 
 
+def _null_formatter() -> Any:
+    from matplotlib.ticker import NullFormatter
+
+    return NullFormatter()
+
+
 def transfer_figures(
     outdir: Path,
     rows: Sequence[dict[str, Any]],
@@ -89,7 +95,9 @@ def transfer_figures(
                 xs, np.subtract(ys, es), np.add(ys, es), color=COLORS[s], alpha=0.12
             )
         ax.set(title=title, xlabel="K (number of genes)", xscale="log")
-        ax.set_xticks(ks), ax.set_xticklabels([str(k) for k in ks])
+        ax.set_xticks(ks)
+    ax.set_xticklabels([str(k) for k in ks])
+    ax.xaxis.set_minor_formatter(_null_formatter())
     axes[0].set_ylabel("ARI")
     axes[0].legend()
     fig.tight_layout()
@@ -110,7 +118,9 @@ def transfer_figures(
         ylabel="ARI drop (within → cross-donor)",
         xscale="log",
     )
-    ax.set_xticks(ks), ax.set_xticklabels([str(k) for k in ks])
+    ax.set_xticks(ks)
+    ax.set_xticklabels([str(k) for k in ks])
+    ax.xaxis.set_minor_formatter(_null_formatter())
     ax.legend(), fig.tight_layout()
     written.append(figdir / "generalization_gap.png")
     fig.savefig(written[-1], dpi=150), plt.close(fig)
