@@ -78,22 +78,28 @@ class SimpleSpatialModel(BaseSpatialModel):
         if self._W is None:
             raise ValueError("model is not fitted; call fit() first.")
 
-    def forward(self, X: np.ndarray) -> np.ndarray:
+    def forward(self, X: np.ndarray, A_norm: sp.csr_matrix | None = None) -> np.ndarray:
+        """Frozen forward pass; ``A_norm`` defaults to the fitted slice's graph."""
         self._check_fitted()
+        A = self._A_norm if A_norm is None else A_norm
         # np.errstate guards against spurious FP-flag warnings raised by some
         # BLAS backends (e.g. macOS Accelerate + numpy 2.0) on valid matmuls.
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             Xc = (np.asarray(X, dtype=float) - self._mean) / self._std
             Z = Xc @ self._W
             for _ in range(self.smooth_iters):
-                Z = self._A_norm @ Z
+                Z = A @ Z
         embedding: np.ndarray = np.asarray(Z)
         return embedding
 
     def get_embedding(self, adata: AnnData | None = None) -> np.ndarray:
+        """Embed the fitted slice, or another slice zero-shot on its own graph."""
         self._check_fitted()
-        X = self._get_expression() if adata is None else _dense(adata.X)
-        return self.forward(X)
+        if adata is None:
+            return self.forward(self._get_expression())
+        if CONN_KEY not in adata.obsp:
+            build_spatial_graph(adata, n_neighbors=self.n_neighbors)
+        return self.forward(_dense(adata.X), normalized_adjacency(adata.obsp[CONN_KEY]))
 
     def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
         """Knockout embedding via a rank-1 update instead of a full forward pass.

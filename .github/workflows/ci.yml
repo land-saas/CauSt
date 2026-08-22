@@ -22,7 +22,7 @@ jobs:
       # --locked fails if uv.lock has drifted from pyproject.toml, so the
       # lockfile can never silently go stale.
       - name: Install
-        run: uv sync --locked
+        run: uv sync --locked --extra stagate
       - name: Ruff
         run: uv run ruff check src tests scripts
       - name: Black
@@ -42,8 +42,9 @@ jobs:
       - uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
         with:
           python-version: ${{ matrix.python-version }}
+      # The stagate extra (CPU torch on Linux) so the backbone is really tested.
       - name: Install
-        run: uv sync --locked
+        run: uv sync --locked --extra stagate
       - name: Pytest with coverage
         run: uv run pytest --cov=caust --cov-report=xml --cov-report=term-missing --cov-fail-under=90
       - name: Upload coverage

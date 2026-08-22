@@ -38,8 +38,8 @@ try:  # torch is an optional extra: pip install "caust[stagate]"
     import torch
     from torch import nn
 except ImportError:  # pragma: no cover - exercised only without the extra
-    torch = None  # type: ignore[assignment]
-    nn = None  # type: ignore[assignment]
+    torch = None  # type: ignore[assignment, unused-ignore]
+    nn = None  # type: ignore[assignment, unused-ignore]
 
 
 def _require_torch() -> None:

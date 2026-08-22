@@ -77,6 +77,17 @@ Changelog = "https://github.com/land-saas/CauSt/blob/main/CHANGELOG.md"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# On Linux (CI, Docker) take torch from PyTorch's CPU wheel index: the PyPI
+# wheel drags in several GB of CUDA libraries that a CPU runner never uses.
+# Only affects uv-managed environments of this project, not `pip install`.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.setuptools.package-data]
 caust = ["py.typed"]
 
