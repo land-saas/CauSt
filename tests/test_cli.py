@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from caust.cli import main
 
@@ -23,7 +22,7 @@ def test_no_command_prints_help(capsys):
     assert "caust" in out.lower()
 
 
-SMOKE = Path(__file__).resolve().parents[1] / "configs" / "experiment" / "smoke.yaml"
+SMOKE = "experiment/smoke"
 
 
 def test_run_then_verify_round_trip(tmp_path, capsys):

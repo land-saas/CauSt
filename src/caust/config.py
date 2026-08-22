@@ -164,9 +164,49 @@ class ExperimentConfig:
         return f"{self.name}-{self.digest[:12]}"
 
 
-def load_config(path: Path, overrides: Sequence[str] | None = None) -> ExperimentConfig:
-    """Load, inherit, override, and validate a config file."""
-    resolved = _resolve_inheritance(Path(path).resolve())
+def bundled_configs() -> dict[str, Path]:
+    """Configs shipped inside the package, keyed like ``experiment/smoke``."""
+    from importlib.resources import files
+
+    root = Path(str(files("caust") / "configs"))
+    out: dict[str, Path] = {}
+    for path in sorted(root.rglob("*.yaml")):
+        out[str(path.relative_to(root).with_suffix(""))] = path
+    return out
+
+
+def resolve_config_path(spec: str | Path) -> Path:
+    """A config path on disk, or the name of a config bundled with the package.
+
+    ``dlpfc_holdout`` and ``experiment/dlpfc_holdout`` both resolve to the
+    bundled ``configs/experiment/dlpfc_holdout.yaml`` when no such file exists
+    in the working directory, so ``caust run -c dlpfc_holdout`` works from a
+    plain ``pip install caust``. Run ``caust configs`` to list them.
+    """
+    path = Path(spec)
+    if path.is_file():
+        return path.resolve()
+    name = str(spec)
+    if name.endswith(".yaml"):
+        name = name[: -len(".yaml")]
+    bundled = bundled_configs()
+    if name in bundled:
+        return bundled[name]
+    matches = [k for k in bundled if k.split("/")[-1] == name]
+    if len(matches) == 1:
+        return bundled[matches[0]]
+    if len(matches) > 1:
+        raise ConfigError(f"ambiguous config name {spec!r}: {', '.join(matches)}")
+    raise ConfigError(
+        f"config file not found: {spec} (bundled configs: {', '.join(bundled)})"
+    )
+
+
+def load_config(
+    path: str | Path, overrides: Sequence[str] | None = None
+) -> ExperimentConfig:
+    """Load, inherit, override, and validate a config file or bundled name."""
+    resolved = _resolve_inheritance(resolve_config_path(path))
     if overrides:
         resolved = apply_overrides(resolved, overrides)
     return ExperimentConfig.from_dict(resolved)

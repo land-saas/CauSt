@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -26,7 +25,7 @@ from caust.transfer import (
     summarize,
 )
 
-SMOKE = Path(__file__).resolve().parents[1] / "configs" / "transfer" / "smoke.yaml"
+SMOKE = "transfer/smoke"
 N_SLICES, N_SEEDS, N_K, N_STRAT = 6, 2, 2, 3
 
 

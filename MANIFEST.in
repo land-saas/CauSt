@@ -9,9 +9,6 @@ recursive-include scripts *.py
 recursive-include docs *.md
 recursive-include docs/figures *.png
 recursive-include docs/tutorials *.ipynb
-# Experiment configs are inputs to a result, not documentation -- a run cannot
-# be reproduced from the sdist without them.
-recursive-include configs *.yaml
 include docs/report/caust_report.tex docs/report/caust_report.pdf
 
 # Never ship generated output, vendored sources, or local data.

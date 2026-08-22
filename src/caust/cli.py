@@ -18,7 +18,15 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--n-causal", type=int, default=8)
 
     r = sub.add_parser("run", help="run a config-driven experiment")
-    r.add_argument("-c", "--config", type=Path, required=True, help="YAML config path")
+    r.add_argument(
+        "-c",
+        "--config",
+        required=True,
+        help=(
+            "YAML config path or bundled name, e.g. dlpfc_holdout "
+            "(list them with: caust configs)"
+        ),
+    )
     r.add_argument(
         "-o",
         "--outdir",
@@ -42,7 +50,15 @@ def _build_parser() -> argparse.ArgumentParser:
     t = sub.add_parser(
         "transfer", help="cross-slice transfer benchmark (every slice as source)"
     )
-    t.add_argument("-c", "--config", type=Path, required=True, help="YAML config path")
+    t.add_argument(
+        "-c",
+        "--config",
+        required=True,
+        help=(
+            "YAML config path or bundled name, e.g. dlpfc_quick "
+            "(list them with: caust configs)"
+        ),
+    )
     t.add_argument("-o", "--outdir", type=Path, default=DEFAULT_RESULTS_DIR)
     t.add_argument(
         "--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE"
@@ -54,7 +70,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="discard finished cells instead of resuming",
     )
 
+    sub.add_parser(
+        "configs", help="list the experiment configs bundled with the package"
+    )
+
     return parser
+
+
+def _cmd_configs() -> int:
+    from .config import bundled_configs
+
+    for name, path in bundled_configs().items():
+        first = next(
+            (
+                line.lstrip("# ").strip()
+                for line in path.read_text().splitlines()
+                if line.startswith("#")
+            ),
+            "",
+        )
+        print(f"  {name:32s} {first}")
+    return 0
 
 
 def _cmd_demo(args: argparse.Namespace) -> int:
@@ -188,6 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_verify(args)
     if args.command == "transfer":
         return _cmd_transfer(args)
+    if args.command == "configs":
+        return _cmd_configs()
     parser.print_help()
     return 1
 

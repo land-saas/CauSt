@@ -89,7 +89,7 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.setuptools.package-data]
-caust = ["py.typed"]
+caust = ["py.typed", "configs/*.yaml", "configs/**/*.yaml"]
 
 # ---------------------------------------------------------------------------
 # Tooling

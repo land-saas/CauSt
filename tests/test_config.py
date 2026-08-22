@@ -99,10 +99,34 @@ def test_dump_config_round_trips(tmp_path):
 def test_shipped_configs_are_valid():
     from pathlib import Path
 
-    root = Path(__file__).resolve().parents[1] / "configs" / "experiment"
+    from caust.config import bundled_configs
+
+    root = Path(bundled_configs()["experiment/smoke"]).parent
     found = sorted(root.glob("*.yaml"))
     assert found, "no experiment configs found"
     for path in found:
         cfg = load_config(path)
         assert cfg.name
         assert cfg.threads >= 1
+
+
+def test_bundled_config_names_resolve():
+    from caust.config import ConfigError, bundled_configs, resolve_config_path
+
+    names = bundled_configs()
+    assert "experiment/smoke" in names and "transfer/smoke" in names
+    assert resolve_config_path("experiment/smoke") == names["experiment/smoke"]
+    assert resolve_config_path("dlpfc_holdout").name == "dlpfc_holdout.yaml"
+    with pytest.raises(ConfigError, match="ambiguous"):
+        resolve_config_path("smoke")
+    with pytest.raises(ConfigError, match="not found"):
+        resolve_config_path("does-not-exist")
+    assert load_config("synthetic_holdout").name == "synthetic_holdout"
+
+
+def test_cli_configs_lists_bundled(capsys):
+    from caust.cli import main
+
+    assert main(["configs"]) == 0
+    out = capsys.readouterr().out
+    assert "experiment/dlpfc_holdout" in out and "transfer/dlpfc_stagate" in out
