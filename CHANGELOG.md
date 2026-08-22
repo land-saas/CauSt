@@ -8,11 +8,33 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Nothing yet.
 
-## [0.1.0] - 2026-08-13
+## [0.1.0] - 2026-08-21
 
 First public release on PyPI (`pip install caust`).
 
 ### Added
+- **STAGATE backbone in pure PyTorch** (`caust.models.stagate`, `backend:
+  stagate`; extra `caust[stagate]`): the graph attention autoencoder of Dong &
+  Zhang (2022) without torch_geometric, validated against the reference
+  implementation on DLPFC 151673 (loss 0.150 vs 0.150, ARI 0.505 vs 0.495),
+  with on-device knockouts, zero-shot embedding of other slices on their own
+  graph, and integrated-gradients attribution with a fidelity metric against
+  exact knockouts.
+- **GraphST backbone** (`caust.models.graphst`, `backend: graphst`): a
+  plain-torch port of Long et al. (2023) with a rank-1 knockout closed form.
+- **Cross-slice transfer benchmark** (`caust transfer`, `caust.transfer`): every
+  slice as source, zero-shot transfer to every slice, six gene-selection
+  strategies at equal gene count (HVG, donor-aware HVG, Moran's I, random,
+  High-delta, CauST), pooled or leave-target-donor-out scoring, paired Wilcoxon
+  tests on independent units, HVG Jaccard stability, resumable grid, figures.
+- **Datasets** (`caust.datasets`): MERFISH hypothalamus (5 sections), STARmap
+  PFC (3) and STARmap visual cortex (1), checksum-pinned; all 12 DLPFC samples.
+- **Scanpy-style API** (`caust.tl`, `caust.pl`): `causal_genes`, `select_genes`,
+  `soft_gene_weights`, `spatial_domains`, `ranking`, `domains`.
+- Clustering methods `eee` (mclust-EEE equivalent), `mclust_eee` (hierarchical
+  initialisation) and `mclust` (R via rpy2); `knockout_mode` zero / mean.
+- Executed DLPFC tutorial notebook, results page, roadmap and related-work
+  notes; technical report rewritten around the reproduced results.
 - **Config-driven experiments and a reproducibility harness.** Experiments are
   described in YAML under `configs/` (with `defaults:` inheritance and
   `--set key=value` overrides) and run with `caust run`, which writes a
