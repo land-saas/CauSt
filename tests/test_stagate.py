@@ -101,3 +101,19 @@ def test_experiment_runner_accepts_stagate_backend(tmp_path):
     )
     metrics = run_experiment(cfg, tmp_path, write=False)
     assert set(metrics["held_out"]) == {"all_genes", "hvg", "caust"}
+
+
+def test_attribution_tracks_knockout_ranking(fitted):
+    from caust.intervention import knockout_scores
+    from caust.models.stagate import attribution_fidelity
+
+    sl, model = fitted
+    delta = knockout_scores(model)
+    for method in ("gradient_input", "integrated_gradients"):
+        attr = model.input_attribution(method=method, n_steps=8)
+        assert attr.shape == (sl.n_vars,)
+        fid = attribution_fidelity(attr, delta)
+        assert fid["n_genes"] == sl.n_vars
+        assert fid["spearman"] > 0.3  # proxy ranks like the exact knockout
+    with pytest.raises(ValueError, match="method must be"):
+        model.input_attribution(method="saliency")

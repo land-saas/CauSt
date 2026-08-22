@@ -3,7 +3,7 @@
 # requires an activated virtualenv — uv keeps .venv in sync with uv.lock.
 .DEFAULT_GOAL := help
 
-.PHONY: help install install-dev lint format typecheck test cov demo benchmark repro dlpfc verify determinism lock docs build publish-test clean check
+.PHONY: help install install-dev lint format typecheck test cov demo benchmark repro dlpfc transfer transfer-quick verify determinism lock docs build publish-test clean check
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -44,6 +44,14 @@ repro:  ## Run the headline experiment from its config into results/
 
 dlpfc:  ## Run the real-data DLPFC held-out-donor benchmark (fetches ~60 MB once)
 	uv run caust run -c configs/experiment/dlpfc_holdout.yaml --figures
+
+transfer:  ## Full 12-slice STAGATE transfer benchmark (hours on a GPU; resumable)
+	uv sync --extra stagate
+	PYTHONUNBUFFERED=1 uv run caust transfer -c configs/transfer/dlpfc_stagate.yaml --figures
+
+transfer-quick:  ## Reduced transfer grid (3 gene budgets, 3 seeds; ~1 h on a laptop GPU)
+	uv sync --extra stagate
+	PYTHONUNBUFFERED=1 uv run caust transfer -c configs/transfer/dlpfc_quick.yaml --figures
 
 verify:  ## Re-run every recorded run and confirm the metrics still match
 	@found=0; status=0; \

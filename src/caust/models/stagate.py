@@ -25,6 +25,7 @@ Only ``torch`` is required -- no torch_geometric.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -40,6 +41,14 @@ try:  # torch is an optional extra: pip install "caust[stagate]"
 except ImportError:  # pragma: no cover - exercised only without the extra
     torch = None  # type: ignore[assignment, unused-ignore]
     nn = None  # type: ignore[assignment, unused-ignore]
+
+# caust.repro enables torch's deterministic mode (warn_only). Apple MPS has no
+# bitwise-deterministic scatter-add, so every attention layer would warn on
+# every call. GPU runs are seeded and reproducible to float tolerance, not to
+# the byte; the provenance manifest records the device so that is explicit.
+warnings.filterwarnings(
+    "ignore", message=".*does not have a deterministic implementation.*"
+)
 
 
 def _require_torch() -> None:
@@ -282,6 +291,50 @@ class STAGATEModel(BaseSpatialModel):
         assert self._X is not None
         return self._X
 
+    def input_attribution(
+        self, method: str = "integrated_gradients", n_steps: int = 32
+    ) -> np.ndarray:
+        """Gradient-based per-gene attribution -- a proxy for knockout scoring.
+
+        Exact knockout scoring costs one forward pass per gene. Gradients give
+        every gene's first-order influence from a handful of backward passes,
+        which is the pre-filter the proposal describes for very large gene
+        pools. The scalar being attributed is the alignment of the embedding
+        with the unperturbed embedding, ``F(X) = sum_i <z_i(X), z_i(X0)>``, so
+        a gene's attribution measures how much silencing it would move spots
+        away from where they are now -- the same quantity knockout measures.
+
+        ``method="gradient_input"`` is plain gradient x input;
+        ``"integrated_gradients"`` averages the gradient along the straight
+        path from the all-zero (everything silenced) baseline to the input
+        (Sundararajan et al., 2017) over ``n_steps`` points. Both return the
+        per-gene sum of absolute attributions over spots, shape ``(G,)``.
+        Compare with :func:`~caust.intervention.knockout_scores` via
+        :func:`attribution_fidelity`.
+        """
+        self._check_fitted()
+        if method not in ("gradient_input", "integrated_gradients"):
+            raise ValueError(
+                "method must be 'gradient_input' or 'integrated_gradients'"
+            )
+        x0 = torch.as_tensor(self._X, device=self.device)
+        with torch.no_grad():
+            z0 = self.net.encode(x0, self._edge_index)
+        alphas = (
+            [1.0]
+            if method == "gradient_input"
+            else [(i + 1) / n_steps for i in range(n_steps)]
+        )
+        grad_sum = torch.zeros_like(x0)
+        for alpha in alphas:
+            x = (alpha * x0).detach().requires_grad_(True)
+            f = (self.net.encode(x, self._edge_index) * z0).sum()
+            (g,) = torch.autograd.grad(f, x)
+            grad_sum += g
+        attribution = (x0 * grad_sum / len(alphas)).abs().sum(0)
+        out: np.ndarray = attribution.detach().cpu().numpy().astype(np.float64)
+        return out
+
     def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
         """Zero one gene column on-device (avoids re-copying the matrix)."""
         self._check_fitted()
@@ -291,3 +344,27 @@ class STAGATEModel(BaseSpatialModel):
             z = self.net.encode(x, self._edge_index)
         out: np.ndarray = z.cpu().numpy().astype(np.float64)
         return out
+
+
+def attribution_fidelity(
+    attribution: np.ndarray, knockout: np.ndarray
+) -> dict[str, float]:
+    """How well a gradient attribution ranks genes like exact knockout does.
+
+    Returns Spearman rank correlation over all genes and the overlap of the
+    top-10% sets -- the numbers that decide whether the proxy can pre-filter.
+    """
+    from scipy.stats import spearmanr
+
+    a = np.asarray(attribution, dtype=float)
+    k = np.asarray(knockout, dtype=float)
+    ok = np.isfinite(a) & np.isfinite(k)
+    rho = float(spearmanr(a[ok], k[ok]).correlation) if ok.sum() > 2 else float("nan")
+    n_top = max(1, int(0.1 * ok.sum()))
+    top_a = set(np.argsort(-a[ok])[:n_top])
+    top_k = set(np.argsort(-k[ok])[:n_top])
+    return {
+        "spearman": rho,
+        "top10pct_overlap": len(top_a & top_k) / n_top,
+        "n_genes": int(ok.sum()),
+    }
