@@ -217,6 +217,7 @@ class STAGATEModel(BaseSpatialModel):
         self._X: np.ndarray | None = None
         self._edge_index: Any = None
         self._Z: np.ndarray | None = None
+        self._x_dev: Any = None
 
     # -- training ---------------------------------------------------------
     def fit(self, adata: AnnData) -> STAGATEModel:
@@ -251,6 +252,7 @@ class STAGATEModel(BaseSpatialModel):
         self._X = X
         self._edge_index = edge_index
         self._Z = None
+        self._x_dev = x  # keep the training matrix resident for knockouts
         return self
 
     def _check_fitted(self) -> None:
@@ -336,12 +338,23 @@ class STAGATEModel(BaseSpatialModel):
         return out
 
     def get_knockout_embedding(self, gene_idx: int) -> np.ndarray:
-        """Zero one gene column on-device (avoids re-copying the matrix)."""
+        """Knockout forward pass with the expression matrix resident on-device.
+
+        The matrix is uploaded once and the gene column is zeroed in place and
+        restored afterwards, so each of the G knockouts costs one forward
+        pass rather than a host-to-device copy of the whole matrix.
+        """
         self._check_fitted()
+        if self._x_dev is None:
+            self._x_dev = torch.as_tensor(self._X, device=self.device)
+        x = self._x_dev
         with torch.no_grad():
-            x = torch.as_tensor(self._X, device=self.device).clone()
+            saved = x[:, gene_idx].clone()
             x[:, gene_idx] = 0.0
-            z = self.net.encode(x, self._edge_index)
+            try:
+                z = self.net.encode(x, self._edge_index)
+            finally:
+                x[:, gene_idx] = saved
         out: np.ndarray = z.cpu().numpy().astype(np.float64)
         return out
 
