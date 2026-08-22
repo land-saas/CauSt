@@ -1,7 +1,9 @@
-# The proposal's headline evaluation: all 12 DLPFC slices as source, zero-shot
-# transfer to every slice, STAGATE backbone, mclust-EEE-equivalent clustering,
-# three gene-selection strategies at equal gene counts. Resumable; hours on a
-# laptop GPU (training cost grows with K).
+# The headline evaluation: all 12 DLPFC slices as source, zero-shot transfer
+# to every slice, STAGATE backbone, mclust-EEE-equivalent clustering, six
+# gene-selection strategies at equal gene counts. Gene sets for the targets of
+# donor D are scored on the other donors only (leave_target_donor_out), so
+# cross-donor ARI is out-of-donor for every strategy. Resumable; many hours on
+# a laptop GPU (the global strategies train one backbone per target donor).
 name: dlpfc_transfer_stagate
 seed: 0
 threads: 1
@@ -23,9 +25,12 @@ model:
 selection:
   lam: 2.0
   n_hvg_pool: 8000        # knockout pool = intersection of top-8000 HVGs of the scoring slices
-  # scoring_slices: defaults to the first slice of each donor (151507, 151669, 151673)
-  k_values: [50, 100, 200, 400, 800, 1600, 3200]
-  strategies: [hvg, highdelta, caust]
+  scoring_mode: leave_target_donor_out
+  scoring_slices_per_donor: 2   # four scoring slices per held-out donor
+  hvg_donor_n_top: 3000         # depth at which a gene counts as HVG in a slice
+  # The pool has ~2,000 genes; K must not exceed it (equal-K comparison).
+  k_values: [50, 100, 200, 400, 800, 1600]
+  strategies: [hvg, hvg_donor, moran, random, highdelta, caust]
 
 evaluation:
   seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]

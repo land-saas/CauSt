@@ -163,6 +163,16 @@ def _cmd_transfer(args: argparse.Namespace) -> int:
             e = summary["table"][s].get(str(k), {}).get("cross_donor")
             cells.append(f"{e['mean']:.3f}" if e else "-")
         print("  " + f"{k:>9d}" + "".join(f"{c:>12s}" for c in cells))
+    tests = summary.get("paired_tests", {})
+    if tests:
+        print("\nCauST vs each strategy, cross-donor, one value per source (Wilcoxon):")
+        for k in summary["k_values"]:
+            for other, res in tests.get(str(k), {}).items():
+                r = res["source"]
+                print(
+                    f"  K={k:<5d} vs {other:10s} diff {r['mean_diff']:+.3f}  "
+                    f"wins {r['caust_wins']}/{r['n_units']}  p={r['p_value']:.3g}"
+                )
     print(f"\nartifacts written to {rundir}")
     return 0
 

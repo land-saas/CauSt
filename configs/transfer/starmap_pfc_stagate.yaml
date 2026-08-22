@@ -14,6 +14,8 @@ model:
   device: auto
 selection:
   lam: 2.0
+  scoring_mode: leave_target_donor_out
+  hvg_donor_n_top: 40
   n_hvg_pool: 166
   k_values: [10, 20, 40, 80]
   strategies: [hvg, hvg_donor, moran, random, highdelta, caust]

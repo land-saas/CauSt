@@ -25,16 +25,31 @@ Strategies (all at equal gene count):
 - ``highdelta``  top-K by mean knockout effect (lambda = 0, no stability);
 - ``caust``      top-K by invariance score ``mean - lambda * std``.
 
-Knockout effects are scored once, on a small set of *scoring slices* (one per
-donor by default), over a gene pool that is the cross-donor intersection of
-each scoring slice's top HVGs. Runs are resumable: every (strategy, K, source)
-cell is written as soon as it finishes and skipped on restart.
+Knockout effects are scored on a small set of *scoring slices* over a gene
+pool that is the cross-donor intersection of each scoring slice's top HVGs.
+Two scoring protocols:
+
+- ``pooled`` -- one slice per donor, every donor included (the proposal's
+  design). The gene set for a cross-donor evaluation has then seen one slice
+  of the *target* donor, unlabelled; the per-source HVG baseline has not.
+- ``leave_target_donor_out`` -- the gene set used to evaluate targets of donor
+  D is scored only on the other donors' slices, so cross-donor ARI is a
+  genuinely out-of-donor measurement for every strategy. Costs one backbone
+  per target donor for the global strategies.
+
+Seeds: ``evaluation.seeds`` re-initialise the clustering only;
+``evaluation.train_seeds`` (default: the run seed) re-train the backbone.
+Statistics are reported at the level of independent units -- sources and
+donor pairs -- not the 96 shared-backbone cells. Runs are resumable: every
+(strategy, K, source) cell is written when complete and skipped on restart.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import time
+import warnings
 from collections.abc import Sequence
 from itertools import combinations
 from pathlib import Path
@@ -54,7 +69,8 @@ from .repro import collect_provenance, deterministic, sha256_file
 STRATEGIES = ("hvg", "hvg_donor", "moran", "random", "highdelta", "caust")
 #: Strategies whose gene set is the same for every source slice.
 GLOBAL_STRATEGIES = ("hvg_donor", "moran", "highdelta", "caust")
-DEFAULT_K = (50, 100, 200, 400, 800, 1600, 3200)
+DEFAULT_K = (50, 100, 200, 400, 800, 1600)
+SCORING_MODES = ("pooled", "leave_target_donor_out")
 RESULTS_CSV = "results.csv"
 SUMMARY_JSON = "summary.json"
 GENES_CSV = "gene_scores.csv"
@@ -64,10 +80,13 @@ SCORES_NPZ = "knockout_scores.npz"
 _FIELDS = (
     "strategy",
     "k",
+    "n_genes",
+    "scoring",
     "source",
     "target",
     "source_donor",
     "target_donor",
+    "train_seed",
     "seed",
     "ari",
     "nmi",
@@ -103,7 +122,13 @@ def rank_hvg(adata: AnnData, n_top: int, counts_layer: str | None = None) -> np.
         have = np.isfinite(rank)
         ranks[have] = rank[have].astype(int)
         return ranks
-    except (ImportError, ValueError):
+    except (ImportError, ValueError) as exc:
+        if counts_layer is not None:
+            warnings.warn(
+                f"seurat_v3 HVG ranking unavailable ({exc}); falling back to "
+                "variance of the log-normalized matrix",
+                stacklevel=2,
+            )
         X = adata.X
         var = (
             np.asarray(X.power(2).mean(0) - np.square(X.mean(0))).ravel()
@@ -133,10 +158,11 @@ def load_transfer_cohort(cfg: ExperimentConfig) -> list[AnnData]:
         from .data import make_synthetic_cohort
 
         spec.setdefault("seed", cfg.seed)
+        per_donor = int(spec.pop("slices_per_donor", 1))
         slices = make_synthetic_cohort(**spec)
         for i, a in enumerate(slices):
             a.obs["sample"] = f"synthetic_{i}"
-            a.obs["donor"] = f"donor_{i}"
+            a.obs["donor"] = f"donor_{i // per_donor}"
     elif source == "dlpfc":
         from .dlpfc import DLPFCError, load_dlpfc_slice
 
@@ -224,12 +250,20 @@ def hvg_jaccard(slices: Sequence[AnnData], n_top: int = 3000) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Gene scoring and gene sets
 # ---------------------------------------------------------------------------
-def default_scoring_indices(slices: Sequence[AnnData]) -> list[int]:
-    """First slice of each donor (the proposal scores one slice per donor)."""
-    seen: dict[str, int] = {}
+def default_scoring_indices(
+    slices: Sequence[AnnData], per_donor: int = 1, exclude_donor: str | None = None
+) -> list[int]:
+    """First ``per_donor`` slices of every donor except ``exclude_donor``."""
+    counts: dict[str, int] = {}
+    out = []
     for i, a in enumerate(slices):
-        seen.setdefault(str(a.obs["donor"].iloc[0]), i)
-    return sorted(seen.values())
+        d = str(a.obs["donor"].iloc[0])
+        if d == exclude_donor:
+            continue
+        if counts.get(d, 0) < per_donor:
+            counts[d] = counts.get(d, 0) + 1
+            out.append(i)
+    return out
 
 
 def build_pool(
@@ -263,12 +297,13 @@ def score_pool(
 
 
 def morans_i(adata: AnnData, genes: Sequence[str], n_neighbors: int = 6) -> np.ndarray:
-    """Moran's I of each gene over the slice's spatial kNN graph."""
+    """Moran's I of each gene over a spatial kNN graph (the slice is not mutated)."""
     from .graph import CONN_KEY, build_spatial_graph
 
-    if CONN_KEY not in adata.obsp:
-        build_spatial_graph(adata, n_neighbors=n_neighbors)
-    W = sp.csr_matrix(adata.obsp[CONN_KEY], dtype=np.float64)
+    probe = AnnData(obs=adata.obs[[]].copy())
+    probe.obsm["spatial"] = np.asarray(adata.obsm["spatial"])
+    build_spatial_graph(probe, n_neighbors=n_neighbors)
+    W = sp.csr_matrix(probe.obsp[CONN_KEY], dtype=np.float64)
     X = adata[:, list(genes)].X
     X = np.asarray(X.todense() if sp.issparse(X) else X, dtype=np.float64)
     Z = X - X.mean(axis=0)
@@ -281,20 +316,29 @@ def morans_i(adata: AnnData, genes: Sequence[str], n_neighbors: int = 6) -> np.n
 
 
 def baseline_scores(
-    slices: Sequence[AnnData], scoring: Sequence[int], names: np.ndarray, n_hvg: int
+    slices: Sequence[AnnData],
+    scoring: Sequence[int],
+    names: np.ndarray,
+    n_top: int = 3000,
 ) -> dict[str, np.ndarray]:
-    """Gene scores for the global baselines over the pool genes ``names``."""
+    """Gene scores for the global baselines over the pool genes ``names``.
+
+    ``hvg_donor`` follows scanpy's ``batch_key`` rule: genes are ordered by
+    the number of scoring slices in which they are within the top-``n_top``
+    HVGs, then by the median of their ranks in those slices. ``n_top`` must be
+    smaller than the pool's own HVG depth for the count to carry information.
+    """
     pool = list(names)
-    # Donor-aware HVG: number of scoring slices in which the gene is within
-    # the top-n_hvg HVGs, tie-broken by mean rank (scanpy batch_key rule).
-    hits = np.zeros(len(pool))
-    mean_rank = np.zeros(len(pool))
-    for i in scoring:
-        r = slices[i].var.loc[pool, "hvg_rank"].to_numpy(dtype=float)
-        hits += r < n_hvg
-        mean_rank += r
-    mean_rank /= len(scoring)
-    hvg_donor = hits * 1e6 - mean_rank
+    ranks = np.vstack(
+        [slices[i].var.loc[pool, "hvg_rank"].to_numpy(dtype=float) for i in scoring]
+    )
+    is_hvg = ranks < n_top
+    hits = is_hvg.sum(axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        median_rank = np.nanmedian(np.where(is_hvg, ranks, np.nan), axis=0)
+    median_rank = np.where(np.isfinite(median_rank), median_rank, np.inf)
+    hvg_donor = hits * 1e9 - np.minimum(median_rank, 1e8)
     moran = np.mean([morans_i(slices[i], pool) for i in scoring], axis=0)
     return {"hvg_donor": hvg_donor, "moran": moran}
 
@@ -312,9 +356,14 @@ def gene_set(
     if strategy == "hvg":
         order = np.argsort(source.var["hvg_rank"].to_numpy(), kind="stable")
         return [str(g) for g in source.var_names[order[:k]]]
+    if k > len(names):
+        raise ExperimentError(
+            f"K={k} exceeds the {len(names)}-gene knockout pool for strategy "
+            f"{strategy!r}; equal-K comparisons need K <= pool size"
+        )
     if strategy == "random":
         gen = rng if rng is not None else np.random.default_rng(0)
-        pick = gen.choice(len(names), size=min(k, len(names)), replace=False)
+        pick = gen.choice(len(names), size=k, replace=False)
         return [str(g) for g in names[np.sort(pick)]]
     if strategy == "highdelta":
         scores = invariance_scores(deltas, lam=0.0)
@@ -332,6 +381,105 @@ def gene_set(
 
 
 # ---------------------------------------------------------------------------
+# Scoring contexts: which slices score the genes for which targets
+# ---------------------------------------------------------------------------
+class ScoringContext:
+    """Pool, knockout deltas and baseline scores from one set of scoring slices."""
+
+    def __init__(
+        self, label: str, scoring: list[int], names: np.ndarray, deltas: np.ndarray
+    ):
+        self.label = label
+        self.scoring = scoring
+        self.names = names
+        self.deltas = deltas
+        self.baselines: dict[str, np.ndarray] = {}
+
+
+def _context_path(outdir: Path, label: str) -> Path:
+    return outdir / (
+        SCORES_NPZ if label == "pooled" else f"knockout_scores_{label}.npz"
+    )
+
+
+def _save_npz(path: Path, names: np.ndarray, deltas: np.ndarray) -> None:
+    tmp = path.with_suffix(".tmp.npz")
+    np.savez(tmp, names=names, deltas=deltas)
+    os.replace(tmp, path)
+
+
+def build_contexts(
+    cfg: ExperimentConfig,
+    slices: Sequence[AnnData],
+    outdir: Path,
+    strategies: Sequence[str],
+    *,
+    resume: bool,
+    verbose: bool,
+) -> dict[str, ScoringContext]:
+    sel = cfg.selection
+    mode = str(sel.get("scoring_mode", "pooled"))
+    if mode not in SCORING_MODES:
+        raise ExperimentError(f"selection.scoring_mode must be one of {SCORING_MODES}")
+    per_donor = int(sel.get("scoring_slices_per_donor", 1))
+    lam = float(sel.get("lam", 2.0))
+    n_hvg_pool = int(sel.get("n_hvg_pool", 8000))
+    donors = list(dict.fromkeys(str(a.obs["donor"].iloc[0]) for a in slices))
+    if mode == "leave_target_donor_out" and len(donors) < 3:
+        raise ExperimentError(
+            "leave_target_donor_out needs at least 3 donors (2 to score, 1 to hold out)"
+        )
+    labels = ["pooled"] if mode == "pooled" else [f"lodo_{d}" for d in donors]
+    excluded = [None] if mode == "pooled" else donors
+    contexts: dict[str, ScoringContext] = {}
+    for label, exclude in zip(labels, excluded):
+        if "scoring_slices" in sel and mode == "pooled":
+            scoring = [int(i) for i in sel["scoring_slices"]]
+        else:
+            scoring = default_scoring_indices(slices, per_donor, exclude)
+        path = _context_path(outdir, label)
+        if resume and path.exists():
+            z = np.load(path, allow_pickle=False)
+            names, deltas = z["names"].astype(str), z["deltas"]
+        else:
+            pool = build_pool(slices, scoring, n_hvg_pool)
+            if verbose:
+                print(
+                    f"[{label}] knockout pool: {len(pool)} genes (intersection of "
+                    f"top-{n_hvg_pool} HVGs over {len(scoring)} scoring slices)"
+                )
+            t0 = time.time()
+            names, deltas, _ = score_pool(
+                slices,
+                scoring,
+                pool,
+                _model_factory(cfg, random_state=cfg.seed),
+                lam,
+                verbose,
+                str(sel.get("knockout_mode", "zero")),
+            )
+            _save_npz(path, names=np.asarray(names, dtype=str), deltas=deltas)
+            if verbose:
+                print(
+                    f"[{label}] scored {len(names)} genes on {len(scoring)} slices "
+                    f"in {time.time() - t0:.0f}s"
+                )
+        ctx = ScoringContext(label, scoring, names, deltas)
+        if any(st in ("hvg_donor", "moran") for st in strategies):
+            ctx.baselines = baseline_scores(
+                slices, scoring, names, int(sel.get("hvg_donor_n_top", 3000))
+            )
+        contexts[label] = ctx
+    return contexts
+
+
+def context_for_target(
+    contexts: dict[str, ScoringContext], donor: str
+) -> ScoringContext:
+    return contexts["pooled"] if "pooled" in contexts else contexts[f"lodo_{donor}"]
+
+
+# ---------------------------------------------------------------------------
 # One grid cell: train on the source, transfer everywhere
 # ---------------------------------------------------------------------------
 def run_cell(
@@ -339,37 +487,67 @@ def run_cell(
     k: int,
     src_idx: int,
     slices: Sequence[AnnData],
-    genes: Sequence[str],
-    model_factory: Callable[[], Any],
+    contexts: dict[str, ScoringContext],
+    cfg: ExperimentConfig,
     seeds: Sequence[int],
+    train_seeds: Sequence[int],
     cluster_method: str,
+    lam: float,
 ) -> list[dict[str, Any]]:
     source = slices[src_idx]
-    model = model_factory().fit(source[:, list(genes)].copy())
+    src_name = str(source.obs["sample"].iloc[0])
+    src_donor = str(source.obs["donor"].iloc[0])
+    # Targets grouped by the scoring context their gene set must come from.
+    groups: dict[str, list[int]] = {}
+    for t, target in enumerate(slices):
+        ctx = context_for_target(contexts, str(target.obs["donor"].iloc[0]))
+        key = ctx.label if strategy in GLOBAL_STRATEGIES else "pooled"
+        groups.setdefault(key, []).append(t)
     rows = []
-    for target in slices:
-        sub = target[:, list(genes)].copy()
-        Z = model.get_embedding(sub)
-        truth = target.obs["domain"].to_numpy()
-        n_clusters = int(len(np.unique(truth)))
-        for seed in seeds:
-            pred = cluster_embedding(
-                Z, n_clusters, random_state=seed, method=cluster_method
+    for label, targets in groups.items():
+        ctx = contexts[label] if label in contexts else next(iter(contexts.values()))
+        genes = gene_set(
+            strategy,
+            k,
+            source,
+            ctx.names,
+            ctx.deltas,
+            lam,
+            ctx.baselines,
+            np.random.default_rng(cfg.seed + 1000 * k + src_idx),
+        )
+        for ts in train_seeds:
+            model = _model_factory(cfg, random_state=int(ts))().fit(
+                source[:, list(genes)].copy()
             )
-            rows.append(
-                {
-                    "strategy": strategy,
-                    "k": k,
-                    "source": str(source.obs["sample"].iloc[0]),
-                    "target": str(target.obs["sample"].iloc[0]),
-                    "source_donor": str(source.obs["donor"].iloc[0]),
-                    "target_donor": str(target.obs["donor"].iloc[0]),
-                    "seed": int(seed),
-                    "ari": ari(truth, pred),
-                    "nmi": nmi(truth, pred),
-                    "n_clusters": n_clusters,
-                }
-            )
+            for t in targets:
+                target = slices[t]
+                Z = model.get_embedding(target[:, list(genes)].copy())
+                truth = target.obs["domain"].to_numpy()
+                n_clusters = int(len(np.unique(truth)))
+                for seed in seeds:
+                    pred = cluster_embedding(
+                        Z, n_clusters, random_state=seed, method=cluster_method
+                    )
+                    rows.append(
+                        {
+                            "strategy": strategy,
+                            "k": k,
+                            "n_genes": len(genes),
+                            "scoring": (
+                                label if strategy in GLOBAL_STRATEGIES else "source"
+                            ),
+                            "source": src_name,
+                            "target": str(target.obs["sample"].iloc[0]),
+                            "source_donor": src_donor,
+                            "target_donor": str(target.obs["donor"].iloc[0]),
+                            "train_seed": int(ts),
+                            "seed": int(seed),
+                            "ari": ari(truth, pred),
+                            "nmi": nmi(truth, pred),
+                            "n_clusters": n_clusters,
+                        }
+                    )
     return rows
 
 
@@ -384,91 +562,141 @@ def _split(row: dict[str, Any]) -> str:
     return "cross_donor"
 
 
+def _stat(v: Sequence[float]) -> dict[str, float]:
+    return {"mean": float(np.mean(v)), "std": float(np.std(v)), "n": len(v)}
+
+
 def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """Means/stds per strategy x K x split, generalization gap, and win counts."""
-    by: dict[tuple[str, int, str], list[float]] = {}
-    pair: dict[tuple[str, int, str, str], list[float]] = {}
+    """Per strategy x K x split: cell-level means, spreads at the right level
+    of independence, the generalization gap, win counts, and paired tests."""
+    # Seed-averaged value per (strategy, k, source, target) cell.
+    cells: dict[tuple[str, int, str, str], dict[str, list[float]]] = {}
+    donors: dict[str, str] = {}
     for r in rows:
-        by.setdefault((r["strategy"], int(r["k"]), _split(r)), []).append(
-            float(r["ari"])
-        )
-        pair.setdefault(
-            (r["strategy"], int(r["k"]), r["source"], r["target"]), []
-        ).append(float(r["ari"]))
-    nmi_by: dict[tuple[str, int, str], list[float]] = {}
-    for r in rows:
-        if "nmi" in r:
-            nmi_by.setdefault((r["strategy"], int(r["k"]), _split(r)), []).append(
-                float(r["nmi"])
-            )
-    strategies = sorted({s for s, _, _ in by})
-    ks = sorted({k for _, k, _ in by})
+        key = (r["strategy"], int(r["k"]), r["source"], r["target"])
+        c = cells.setdefault(key, {"ari": [], "nmi": [], "n_genes": []})
+        c["ari"].append(float(r["ari"]))
+        if "nmi" in r and r["nmi"] not in ("", None):
+            c["nmi"].append(float(r["nmi"]))
+        if "n_genes" in r and r["n_genes"] not in ("", None):
+            c["n_genes"].append(float(r["n_genes"]))
+        donors[r["source"]] = r["source_donor"]
+        donors[r["target"]] = r["target_donor"]
+    strategies = sorted({k[0] for k in cells})
+    ks = sorted({k[1] for k in cells})
     table: dict[str, Any] = {}
     for s in strategies:
         for k in ks:
             entry: dict[str, Any] = {}
             for split in ("within_slice", "within_donor", "cross_donor"):
-                v = by.get((s, k, split))
-                if v:
+                means, seed_stds, nmis, ng = [], [], [], []
+                for (ss, kk, src, tgt), c in cells.items():
+                    if ss != s or kk != k:
+                        continue
+                    row_split = _split(
+                        {
+                            "source": src,
+                            "target": tgt,
+                            "source_donor": donors[src],
+                            "target_donor": donors[tgt],
+                        }
+                    )
+                    if row_split != split:
+                        continue
+                    means.append(float(np.mean(c["ari"])))
+                    seed_stds.append(float(np.std(c["ari"])))
+                    if c["nmi"]:
+                        nmis.append(float(np.mean(c["nmi"])))
+                    ng.extend(c["n_genes"])
+                if means:
                     entry[split] = {
-                        "mean": float(np.mean(v)),
-                        "std": float(np.std(v)),
-                        "n": len(v),
+                        "mean": float(np.mean(means)),
+                        "std": float(np.std(means)),  # across (source, target) cells
+                        "seed_std": float(np.mean(seed_stds)),  # within a cell
+                        "n_cells": len(means),
                     }
-                    nv = nmi_by.get((s, k, split))
-                    if nv:
-                        entry[split]["nmi"] = float(np.mean(nv))
+                    if nmis:
+                        entry[split]["nmi"] = float(np.mean(nmis))
+            if ng:
+                entry["n_genes"] = {"min": int(min(ng)), "max": int(max(ng))}
             if "within_slice" in entry and "cross_donor" in entry:
                 entry["generalization_gap"] = (
                     entry["within_slice"]["mean"] - entry["cross_donor"]["mean"]
                 )
             table.setdefault(s, {})[str(k)] = entry
-    wins: dict[str, Any] = {}
-    if "caust" in strategies and "hvg" in strategies:
-        for k in ks:
-            counts = {"within_slice": [0, 0], "cross_donor": [0, 0]}
-            donors = {r["source"]: r["source_donor"] for r in rows}
-            for (s, kk, src, tgt), v in pair.items():
-                if s != "caust" or kk != k or ("hvg", k, src, tgt) not in pair:
-                    continue
-                if src == tgt:
-                    split = "within_slice"
-                elif donors[src] != donors[tgt]:
-                    split = "cross_donor"
-                else:
-                    continue
-                counts[split][1] += 1
-                if np.mean(v) > np.mean(pair[("hvg", k, src, tgt)]):
-                    counts[split][0] += 1
-            wins[str(k)] = {
-                name: {"caust_wins": a, "pairs": b} for name, (a, b) in counts.items()
-            }
+    cell_means = {key: float(np.mean(c["ari"])) for key, c in cells.items()}
     return {
         "strategies": strategies,
         "k_values": ks,
         "table": table,
-        "caust_vs_hvg_wins": wins,
-        "paired_tests": paired_tests(pair, strategies, ks, rows),
+        "caust_vs_hvg_wins": _wins(cell_means, donors, ks),
+        "paired_tests": paired_tests(cell_means, donors, strategies, ks),
     }
 
 
+def _wins(
+    cell_means: dict[tuple[str, int, str, str], float],
+    donors: dict[str, str],
+    ks: Sequence[int],
+) -> dict[str, Any]:
+    """Descriptive CauST-vs-HVG win counts over cells (not independent units)."""
+    out: dict[str, Any] = {}
+    strategies = {k[0] for k in cell_means}
+    if not {"caust", "hvg"} <= strategies:
+        return out
+    for k in ks:
+        counts = {"within_slice": [0, 0], "cross_donor": [0, 0]}
+        for (s, kk, src, tgt), v in cell_means.items():
+            if s != "caust" or kk != k or ("hvg", k, src, tgt) not in cell_means:
+                continue
+            if src == tgt:
+                split = "within_slice"
+            elif donors[src] != donors[tgt]:
+                split = "cross_donor"
+            else:
+                continue
+            counts[split][1] += 1
+            counts[split][0] += v > cell_means[("hvg", k, src, tgt)]
+        out[str(k)] = {
+            name: {"caust_wins": int(a), "cells": int(b)}
+            for name, (a, b) in counts.items()
+        }
+    return out
+
+
 def paired_tests(
-    pair: dict[tuple[str, int, str, str], list[float]],
+    cell_means: dict[tuple[str, int, str, str], float],
+    donors: dict[str, str],
     strategies: Sequence[str],
     ks: Sequence[int],
-    rows: Sequence[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Wilcoxon signed-rank test of CauST against every other strategy.
+    """Wilcoxon signed-rank tests of CauST against every other strategy.
 
-    Pairs are (source, target) cells with the seed-averaged ARI; cross-donor
-    pairs and within-slice pairs are tested separately. Consecutive sections
-    from one donor are near-replicates, so cross-donor is the honest test.
+    The (source, target) cells share backbones (one per source) and labels
+    (one per target), so they are not independent. Tests are therefore run
+    on aggregated units: one value per **source** (its mean cross-donor ARI,
+    n = number of slices) and one per **donor pair** (n = D x (D-1)); the
+    within-slice test is one value per source.
     """
     from scipy.stats import wilcoxon
 
     if "caust" not in strategies:
         return {}
-    donors = {r["source"]: r["source_donor"] for r in rows}
+
+    def unit_means(strategy: str, k: int, level: str) -> dict[str, float]:
+        acc: dict[str, list[float]] = {}
+        for (s, kk, src, tgt), v in cell_means.items():
+            if s != strategy or kk != k:
+                continue
+            if level == "within_slice":
+                if src != tgt:
+                    continue
+                acc.setdefault(src, []).append(v)
+            elif donors[src] != donors[tgt]:
+                unit = src if level == "source" else f"{donors[src]}->{donors[tgt]}"
+                acc.setdefault(unit, []).append(v)
+        return {u: float(np.mean(v)) for u, v in acc.items()}
+
     out: dict[str, Any] = {}
     for k in ks:
         out[str(k)] = {}
@@ -476,28 +704,23 @@ def paired_tests(
             if other == "caust":
                 continue
             res: dict[str, Any] = {}
-            for split in ("within_slice", "cross_donor"):
-                a, b = [], []
-                for (s, kk, src, tgt), v in pair.items():
-                    if s != "caust" or kk != k or ("caust", k, src, tgt) not in pair:
-                        continue
-                    if (other, k, src, tgt) not in pair:
-                        continue
-                    is_within = src == tgt
-                    is_cross = donors[src] != donors[tgt]
-                    if (split == "within_slice" and is_within) or (
-                        split == "cross_donor" and is_cross
-                    ):
-                        a.append(float(np.mean(v)))
-                        b.append(float(np.mean(pair[(other, k, src, tgt)])))
-                if len(a) >= 2 and np.any(np.subtract(a, b) != 0):
+            for level in ("source", "donor_pair", "within_slice"):
+                a_map, b_map = unit_means("caust", k, level), unit_means(
+                    other, k, level
+                )
+                units = sorted(set(a_map) & set(b_map))
+                a = [a_map[u] for u in units]
+                b = [b_map[u] for u in units]
+                diff = np.subtract(a, b) if a else np.array([])
+                if len(units) >= 2 and np.any(diff != 0):
                     p = float(wilcoxon(a, b).pvalue)
                 else:
                     p = float("nan")
-                res[split] = {
-                    "mean_diff": float(np.mean(a) - np.mean(b)) if a else float("nan"),
+                res[level] = {
+                    "mean_diff": float(np.mean(diff)) if len(diff) else float("nan"),
+                    "caust_wins": int(np.sum(diff > 0)) if len(diff) else 0,
+                    "n_units": len(units),
                     "p_value": p,
-                    "n_pairs": len(a),
                 }
             out[str(k)][other] = res
     return out
@@ -515,7 +738,9 @@ def _write_rows(path: Path, rows: Sequence[dict[str, Any]]) -> None:
         if new:
             w.writeheader()
         for r in rows:
-            w.writerow({f: r[f] for f in _FIELDS})
+            w.writerow({f: r.get(f, "") for f in _FIELDS})
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -524,7 +749,57 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     with open(path, encoding="utf-8") as fh:
-        return [dict(r) for r in csv.DictReader(fh)]
+        rows = [dict(r) for r in csv.DictReader(fh)]
+    # A truncated final line shows up as a row with missing/None fields.
+    return [
+        r for r in rows if r.get("ari") not in (None, "") and None not in r.values()
+    ]
+
+
+def _cell_key(r: dict[str, Any]) -> tuple[str, int, str]:
+    return (str(r["strategy"]), int(r["k"]), str(r["source"]))
+
+
+def _completed_cells(
+    path: Path, expected_rows: int
+) -> tuple[set[tuple[str, int, str]], list[dict[str, Any]]]:
+    """Cells with every expected row; incomplete cells are dropped from disk."""
+    rows = _read_rows(path)
+    counts: dict[tuple[str, int, str], int] = {}
+    for r in rows:
+        counts[_cell_key(r)] = counts.get(_cell_key(r), 0) + 1
+    done = {key for key, n in counts.items() if n >= expected_rows}
+    kept = [r for r in rows if _cell_key(r) in done]
+    if len(kept) != len(rows):
+        path.unlink()
+        if kept:
+            _write_rows(path, kept)
+    return done, kept
+
+
+def _validate(
+    cfg: ExperimentConfig, ks: Sequence[int], strategies: Sequence[str]
+) -> None:
+    sel, ev = cfg.selection, cfg.evaluation
+    n_rank = int(cfg.data.get("n_hvg_rank", 8000))
+    n_pool = int(sel.get("n_hvg_pool", 8000))
+    jac = int(ev.get("jaccard_n_top", 3000))
+    problems = []
+    if n_pool > n_rank:
+        problems.append(f"selection.n_hvg_pool ({n_pool}) > data.n_hvg_rank ({n_rank})")
+    if jac > n_rank:
+        problems.append(
+            f"evaluation.jaccard_n_top ({jac}) > data.n_hvg_rank ({n_rank})"
+        )
+    if "hvg" in strategies and max(ks) > n_rank:
+        problems.append(
+            f"max K ({max(ks)}) > data.n_hvg_rank ({n_rank}) for strategy hvg"
+        )
+    unknown = [s for s in strategies if s not in STRATEGIES]
+    if unknown:
+        problems.append(f"unknown strategies {unknown}; expected {STRATEGIES}")
+    if problems:
+        raise ExperimentError("; ".join(problems))
 
 
 def run_transfer(
@@ -544,21 +819,19 @@ def run_transfer(
     lam = float(sel.get("lam", 2.0))
     ks = [int(k) for k in sel.get("k_values", DEFAULT_K)]
     strategies = [str(s) for s in sel.get("strategies", STRATEGIES)]
-    n_hvg_pool = int(sel.get("n_hvg_pool", 8000))
     seeds = [int(s) for s in ev.get("seeds", range(10))]
+    train_seeds = [int(s) for s in ev.get("train_seeds", [cfg.seed])]
     cluster_method = str(ev.get("cluster_method", "eee"))
     jaccard_top = int(ev.get("jaccard_n_top", 3000))
+    _validate(cfg, ks, strategies)
 
-    done = (
-        {
-            (r["strategy"], int(r["k"]), r["source"])
-            for r in _read_rows(outdir / RESULTS_CSV)
-        }
-        if resume
-        else set()
-    )
-    if not resume and (outdir / RESULTS_CSV).exists():
-        (outdir / RESULTS_CSV).unlink()
+    if not resume:
+        for name in (RESULTS_CSV, SUMMARY_JSON, "manifest.json"):
+            (outdir / name).unlink(missing_ok=True)
+        for stale in outdir.glob("knockout_scores*.npz"):
+            stale.unlink()
+        for fig in (outdir / "figures").glob("*.png"):
+            fig.unlink()
 
     with deterministic(seed=cfg.seed, threads=cfg.threads):
         provenance = collect_provenance(seed=cfg.seed, threads=cfg.threads)
@@ -569,48 +842,27 @@ def run_transfer(
                 f"loaded {len(slices)} slices x {slices[0].n_vars} genes "
                 f"in {time.time() - t0:.0f}s"
             )
-        scoring = [
-            int(i) for i in sel.get("scoring_slices", default_scoring_indices(slices))
-        ]
+        expected = len(slices) * len(seeds) * len(train_seeds)
+        done, _ = (
+            _completed_cells(outdir / RESULTS_CSV, expected) if resume else (set(), [])
+        )
 
         jac = hvg_jaccard(slices, jaccard_top)
         (outdir / JACCARD_JSON).write_text(json.dumps(jac, indent=2) + "\n")
 
-        scores_path = outdir / SCORES_NPZ
-        if resume and scores_path.exists():
-            z = np.load(scores_path, allow_pickle=False)
-            names, deltas = z["names"].astype(str), z["deltas"]
-        else:
-            pool = build_pool(slices, scoring, n_hvg_pool)
-            if verbose:
-                print(
-                    f"knockout pool: {len(pool)} genes (intersection of "
-                    f"top-{n_hvg_pool} HVGs over {len(scoring)} scoring slices)"
-                )
-            t0 = time.time()
-            names, deltas, _ = score_pool(
-                slices,
-                scoring,
-                pool,
-                _model_factory(cfg, random_state=cfg.seed),
-                lam,
-                verbose,
-                str(sel.get("knockout_mode", "zero")),
-            )
-            np.savez(scores_path, names=np.asarray(names, dtype=str), deltas=deltas)
-            if verbose:
-                print(
-                    f"scored {len(names)} genes on {len(scoring)} slices "
-                    f"in {time.time() - t0:.0f}s"
-                )
-        _write_gene_scores(outdir / GENES_CSV, names, deltas, lam)
-
-        baselines = (
-            baseline_scores(slices, scoring, names, n_hvg_pool)
-            if any(st in ("hvg_donor", "moran") for st in strategies)
-            else {}
+        contexts = build_contexts(
+            cfg, slices, outdir, strategies, resume=resume, verbose=verbose
         )
-        factory = _model_factory(cfg, random_state=cfg.seed)
+        for ctx in contexts.values():
+            pool_ks = [k for k in ks if k > len(ctx.names)]
+            if pool_ks and any(s != "hvg" for s in strategies):
+                raise ExperimentError(
+                    f"k_values {pool_ks} exceed the {len(ctx.names)}-gene pool "
+                    f"({ctx.label}); drop them or enlarge selection.n_hvg_pool"
+                )
+        first = next(iter(contexts.values()))
+        _write_gene_scores(outdir / GENES_CSV, first.names, first.deltas, lam)
+
         total = len(strategies) * len(ks) * len(slices)
         n_done = 0
         for k in ks:
@@ -621,25 +873,17 @@ def run_transfer(
                     if key in done:
                         continue
                     t0 = time.time()
-                    genes = gene_set(
-                        strategy,
-                        k,
-                        source,
-                        names,
-                        deltas,
-                        lam,
-                        baselines,
-                        np.random.default_rng(cfg.seed + 1000 * k + src_idx),
-                    )
                     rows = run_cell(
                         strategy,
                         k,
                         src_idx,
                         slices,
-                        genes,
-                        factory,
+                        contexts,
+                        cfg,
                         seeds,
+                        train_seeds,
                         cluster_method,
+                        lam,
                     )
                     _write_rows(outdir / RESULTS_CSV, rows)
                     done.add(key)
@@ -658,21 +902,30 @@ def run_transfer(
                         )
                         if cross:
                             msg += f"  cross-donor {np.mean(cross):.3f}"
-                        print(msg + f"  ({time.time()-t0:.0f}s)")
+                        print(msg + f"  ({time.time() - t0:.0f}s)")
 
     rows = _read_rows(outdir / RESULTS_CSV)
     summary = summarize(rows)
     summary["hvg_jaccard"] = jac
     summary["provenance"] = provenance
-    summary["scoring_slices"] = [str(slices[i].obs["sample"].iloc[0]) for i in scoring]
-    summary["n_pool_genes"] = int(len(names))
+    summary["scoring_mode"] = str(sel.get("scoring_mode", "pooled"))
+    summary["scoring_contexts"] = {
+        label: {
+            "scoring_slices": [
+                str(slices[i].obs["sample"].iloc[0]) for i in ctx.scoring
+            ],
+            "n_pool_genes": int(len(ctx.names)),
+        }
+        for label, ctx in contexts.items()
+    }
+    summary["seeds"] = {"clustering": seeds, "training": train_seeds}
     (outdir / SUMMARY_JSON).write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n"
     )
     if figures:
         from .figures import transfer_figures
 
-        transfer_figures(outdir, rows, summary, names, deltas, lam, cfg)
+        transfer_figures(outdir, rows, summary, first.names, first.deltas, lam, cfg)
     artifacts = {
         str(p.relative_to(outdir)): sha256_file(p)
         for p in sorted(outdir.rglob("*"))

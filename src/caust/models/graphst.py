@@ -147,7 +147,8 @@ class GraphSTModel(BaseSpatialModel):
         self.net: Any = None
         self.pca: PCA | None = None
         self.loss_history: list[float] = []
-        self._X: np.ndarray | None = None  # scaled training features
+        self._X: np.ndarray | None = None  # raw (unscaled) training matrix
+        self._X_scaled: np.ndarray | None = None
         self._std: np.ndarray | None = None
         self._adj: Any = None
         self._Z: np.ndarray | None = None
@@ -205,7 +206,8 @@ class GraphSTModel(BaseSpatialModel):
         for p in net.parameters():
             p.requires_grad_(False)
         self.net = net
-        self._X = X
+        self._X = raw
+        self._X_scaled = X
         self._adj = adj
         with torch.no_grad():
             h = net.reconstruct(net.encode(x, adj), adj).cpu().numpy()
@@ -242,10 +244,9 @@ class GraphSTModel(BaseSpatialModel):
         assert self._std is not None and self.pca is not None
         if adata is None:
             if self._Z is None:
+                assert self._X_scaled is not None
                 self._Z = np.asarray(
-                    self.pca.transform(
-                        self._reconstruct(self._get_expression(), self._adj)
-                    ),
+                    self.pca.transform(self._reconstruct(self._X_scaled, self._adj)),
                     dtype=np.float64,
                 )
             return self._Z
@@ -254,19 +255,24 @@ class GraphSTModel(BaseSpatialModel):
         return np.asarray(self.pca.transform(h), dtype=np.float64)
 
     def _get_expression(self) -> np.ndarray:
+        """The raw training matrix (``forward`` applies the frozen scaling)."""
         self._check_fitted()
         assert self._X is not None
-        return self._X  # already scaled; forward() rescales raw input
+        return self._X
 
     def get_knockout_embedding(self, gene_idx: int, mode: str = "zero") -> np.ndarray:
         """Rank-1 knockout: the model is linear in the scaled features."""
         self._check_fitted()
         if mode not in self.KNOCKOUT_MODES:
             raise ValueError(f"mode must be one of {self.KNOCKOUT_MODES}, got {mode!r}")
-        assert self._X is not None and self.pca is not None
-        column = self._X[:, gene_idx : gene_idx + 1]
+        assert self._X is not None and self._X_scaled is not None
+        assert self._std is not None and self.pca is not None
+        column = self._X_scaled[:, gene_idx : gene_idx + 1]
         if mode == "mean":
-            column = column - column.mean()
+            # The generic path replaces the raw gene by its raw mean and then
+            # scales, so the scaled column moves to scale(raw mean).
+            raw_mean = float(self._X[:, gene_idx].mean())
+            column = column - min(raw_mean / self._std[gene_idx], self.scale_max)
         with torch.no_grad():
             col = torch.as_tensor(column, device=self.device)
             row = self.net.weight1[gene_idx : gene_idx + 1, :] @ self.net.weight2

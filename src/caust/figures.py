@@ -119,6 +119,7 @@ def transfer_figures(
     k_ref = min(ks, key=lambda k: abs(k - 100))
     samples = sorted({r["source"] for r in rows})
     donors = {r["source"]: r["source_donor"] for r in rows}
+    donors.update({r["target"]: r["target_donor"] for r in rows})
     idx = {s: i for i, s in enumerate(samples)}
     mats = {}
     for s in strategies:
@@ -188,15 +189,16 @@ def transfer_figures(
         xlabel="Invariance score (normalized)",
         title=f"Top-20 causally invariant genes (λ={lam:g})",
     )
-    ax.text(
-        0.98,
-        0.02,
-        "★ known cortical layer marker",
-        transform=ax.transAxes,
-        ha="right",
-        fontsize=8,
-        color="#b91c1c",
-    )
+    if markers:
+        ax.text(
+            0.98,
+            0.02,
+            "★ known marker gene",
+            transform=ax.transAxes,
+            ha="right",
+            fontsize=8,
+            color="#b91c1c",
+        )
     fig.tight_layout()
     written.append(figdir / "top_genes.png")
     fig.savefig(written[-1], dpi=150), plt.close(fig)

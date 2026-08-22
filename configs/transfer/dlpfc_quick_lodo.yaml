@@ -1,0 +1,8 @@
+# Reduced grid with leave-target-donor-out scoring: the honest cross-donor
+# protocol at two gene budgets, all six strategies, three seeds.
+defaults: dlpfc_stagate.yaml
+name: dlpfc_transfer_quick_lodo
+selection:
+  k_values: [50, 100]
+evaluation:
+  seeds: [0, 1, 2]

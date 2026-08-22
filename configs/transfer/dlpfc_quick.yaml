@@ -1,8 +1,13 @@
-# A reduced grid of the full benchmark for a first look (~30-40 min on an
-# Apple-silicon GPU): three gene budgets, three seeds, same protocol.
+# A reduced grid with the proposal's own (pooled) scoring protocol: one
+# scoring slice per donor, every donor included, three gene budgets, three
+# seeds, ~2 h on an Apple-silicon GPU. See dlpfc_quick_lodo.yaml for the
+# out-of-donor variant.
 defaults: dlpfc_stagate.yaml
 name: dlpfc_transfer_quick
 selection:
+  scoring_mode: pooled
+  scoring_slices_per_donor: 1
   k_values: [50, 100, 400]
+  strategies: [hvg, highdelta, caust]
 evaluation:
   seeds: [0, 1, 2]

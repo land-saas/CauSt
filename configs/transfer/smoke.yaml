@@ -4,7 +4,8 @@ seed: 0
 threads: 1
 data:
   source: synthetic
-  n_slices: 3
+  n_slices: 6
+  slices_per_donor: 2
   grid: 8
   n_causal: 4
   n_hvg_rank: 40
@@ -14,9 +15,14 @@ model:
 selection:
   lam: 1.0
   n_hvg_pool: 40
+  scoring_mode: pooled
+  scoring_slices_per_donor: 1
+  hvg_donor_n_top: 20
+  knockout_mode: zero
   k_values: [4, 8]
   strategies: [hvg, highdelta, caust]
 evaluation:
   seeds: [0, 1]
+  train_seeds: [0]
   cluster_method: eee
   jaccard_n_top: 10
